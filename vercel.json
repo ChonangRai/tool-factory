@@ -1,19 +1,5 @@
 {
-    "version": 2,
-    "builds": [
-        {
-            "src": "packages/homepage/package.json",
-            "use": "@vercel/static-build",
-            "config": {
-                "distDir": "dist"
-            }
-        },
-        {
-            "src": "packages/factories/form-factory/package.json",
-            "use": "@vercel/static-build",
-            "config": {
-                "distDir": "dist"
-            }
-        }
-    ]
+    "installCommand": "npm install",
+    "buildCommand": "cd packages/factories/form-factory && npm run build",
+    "outputDirectory": "packages/factories/form-factory/dist"
 }
