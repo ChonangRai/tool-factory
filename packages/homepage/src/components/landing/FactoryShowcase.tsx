@@ -8,7 +8,7 @@ const factories: Factory[] = [
     description: "Create, manage, and process form submissions with OCR support and real-time notifications. Enterprise-ready form management.",
     icon: ClipboardList,
     status: "available",
-    url: "http://formfactory.toolfactory.uk", // Form Factory dev server
+    url: "http://forms.toolfactory.uk", // Form Factory dev server
   },
   {
     id: "pdf-factory",
