@@ -1,7 +1,8 @@
 {
-  "name": "vite_react_shadcn_ts",
+  "name": "form-factory",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Enterprise form management solution with OCR capabilities. Perfect for receipt collection, expense tracking, contact forms, and data submissions with secure cloud storage and real-time notifications",
   "type": "module",
   "scripts": {
     "dev": "vite",
