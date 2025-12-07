@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Receipt, Shield, Zap, CheckCircle } from 'lucide-react';
+import { ClipboardList, Shield, Zap, CheckCircle } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -11,8 +11,8 @@ export default function Home() {
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Receipt className="h-8 w-8 text-primary" />
-              <h1 className="text-xl font-bold text-foreground">ReceiptCollector</h1>
+              <ClipboardList className="h-8 w-8 text-primary" />
+              <h1 className="text-xl font-bold text-foreground">Form Factory</h1>
             </div>
             <Link to="/auth">
               <Button variant="outline">Manager Portal</Button>
@@ -26,14 +26,13 @@ export default function Home() {
         <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
           <div className="text-center">
             <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-primary">
-              <Receipt className="h-10 w-10 text-primary-foreground" />
+              <ClipboardList className="h-10 w-10 text-primary-foreground" />
             </div>
             <h2 className="mb-4 text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-              Submit Your Receipts
+              Submit Your Forms
             </h2>
             <p className="mx-auto mb-8 max-w-2xl text-lg text-muted-foreground">
-              Fast, secure, and simple receipt submission system. Upload your receipts and expense
-              details in minutes.
+              Fast, secure, and simple form submission system. Submit receipts, contact forms, data collection, and more in minutes.
             </p>
             <div className="flex justify-center gap-4">
               <Link to="/auth">
@@ -49,7 +48,7 @@ export default function Home() {
         <section className="bg-card py-16">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <h3 className="mb-12 text-center text-3xl font-bold text-foreground">
-              Why Choose ReceiptCollector?
+              Why Choose Form Factory?
             </h3>
             <div className="grid gap-8 md:grid-cols-3">
               <Card className="shadow-subtle">
@@ -61,8 +60,8 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <CardDescription>
-                    Submit your receipts in under 2 minutes with our streamlined form. No account
-                    required.
+                    Submit your forms in under 2 minutes with our streamlined interface. No account
+                    required for submissions.
                   </CardDescription>
                 </CardContent>
               </Card>
@@ -91,8 +90,8 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <CardDescription>
-                    Receive instant email confirmation when your receipt is submitted and when it's
-                    reviewed.
+                    Receive instant email confirmation when your submission is received and when it's
+                    processed.
                   </CardDescription>
                 </CardContent>
               </Card>
@@ -105,10 +104,10 @@ export default function Home() {
           <Card className="bg-gradient-primary text-center shadow-elevated">
             <CardContent className="py-12">
               <h3 className="mb-4 text-3xl font-bold text-primary-foreground">
-                Ready to Submit Your Receipt?
+                Ready to Get Started?
               </h3>
               <p className="mb-8 text-primary-foreground/90">
-                Get started now and receive confirmation within minutes
+                Submit forms, collect data, and manage submissions effortlessly
               </p>
               <Link to="/auth">
                 <Button size="lg" variant="secondary">
@@ -124,7 +123,7 @@ export default function Home() {
       <footer className="border-t bg-card py-8">
         <div className="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
           <p className="text-sm text-muted-foreground">
-            © 2024 ReceiptCollector. All rights reserved.
+            © {new Date().getFullYear()}  Form Factory by <a href="https://toolfactory.uk" target="_blank" rel="noopener noreferrer">ToolFactory</a>. All rights reserved.
           </p>
         </div>
       </footer>
