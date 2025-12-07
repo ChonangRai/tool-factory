@@ -29,10 +29,10 @@ export default function Home() {
               <ClipboardList className="h-10 w-10 text-primary-foreground" />
             </div>
             <h2 className="mb-4 text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-              Submit Your Forms
+              Collect Anything, Manage Everything
             </h2>
             <p className="mx-auto mb-8 max-w-2xl text-lg text-muted-foreground">
-              Fast, secure, and simple form submission system. Submit receipts, contact forms, data collection, and more in minutes.
+              Powerful form management for receipts, surveys, contact forms, feedback, applications, and any data collection. Fast, secure, and simple.
             </p>
             <div className="flex justify-center gap-4">
               <Link to="/auth">
@@ -104,10 +104,10 @@ export default function Home() {
           <Card className="bg-gradient-primary text-center shadow-elevated">
             <CardContent className="py-12">
               <h3 className="mb-4 text-3xl font-bold text-primary-foreground">
-                Ready to Get Started?
+                Ready to Start Collecting?
               </h3>
               <p className="mb-8 text-primary-foreground/90">
-                Submit forms, collect data, and manage submissions effortlessly
+                Receipts, surveys, leads, feedback, applications - collect and manage it all
               </p>
               <Link to="/auth">
                 <Button size="lg" variant="secondary">

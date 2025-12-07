@@ -5,7 +5,7 @@ const factories: Factory[] = [
   {
     id: "form-factory",
     name: "Form Factory",
-    description: "Create, manage, and process form submissions with OCR support. Perfect for receipt collection, expense management, contact forms, and data collection. Enterprise-ready with real-time notifications and secure storage.",
+    description: "Collect Anything, Manage Everything. Perfect for receipts, surveys, contact forms, feedback, applications, and any data collection. Enterprise-ready with OCR, real-time notifications, and secure storage.",
     icon: ClipboardList,
     status: "available",
     url: "http://forms.toolfactory.uk",

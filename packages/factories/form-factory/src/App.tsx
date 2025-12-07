@@ -13,6 +13,7 @@ import Admin from "./pages/Admin";
 import AllSubmissions from "./pages/AllSubmissions";
 import ArchivedSubmissions from "./pages/ArchivedSubmissions";
 import UserManagement from "./pages/UserManagement";
+import Settings from "./pages/Settings";
 import DashboardLayout from "./layouts/DashboardLayout";
 import NotFound from "./pages/NotFound";
 
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="users" element={<UserManagement />} />
             <Route path="submissions" element={<AllSubmissions />} />
             <Route path="archived" element={<ArchivedSubmissions />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
 
           {/* Redirect /admin to /dashboard for backwards compatibility */}
