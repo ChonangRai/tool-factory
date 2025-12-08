@@ -67,6 +67,7 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState('');
 
   useEffect(() => {
     if (organizationId) {
@@ -150,7 +151,7 @@ export default function UserManagement() {
 
       if (error) throw error;
 
-      toast.success('User removed from organization');
+      toast.success('User removed from workspace');
       setUserToDelete(null);
       loadUsers();
     } catch (error: any) {
@@ -187,7 +188,7 @@ export default function UserManagement() {
         .insert({
           organization_id: organizationId,
           role: 'staff', // Default role
-          // email: optional, we can add an input for it later if needed
+          email: inviteEmail || null, // Optional email for targeted invites
         })
         .select('token')
         .single();
@@ -198,6 +199,7 @@ export default function UserManagement() {
       navigator.clipboard.writeText(inviteLink);
       toast.success('Secure invite link copied to clipboard');
       setIsInviteDialogOpen(false);
+      setInviteEmail(''); // Reset email field
     } catch (error: any) {
       console.error('Error creating invitation:', error);
       toast.error('Failed to create invitation');
@@ -222,15 +224,24 @@ export default function UserManagement() {
             <DialogHeader>
               <DialogTitle>Invite New User</DialogTitle>
               <DialogDescription>
-                Generate a secure link to invite a new user to your organization.
+                Generate a secure link to invite a new user to your workspace.
                 They will be added as Staff by default.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Click the button below to generate and copy a unique, secure invitation link.
-                This link will expire in 7 days and can only be used once.
-              </p>
+              <div className="space-y-2">
+                <Label htmlFor="invite-email">Email (Optional)</Label>
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="user@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Leave empty to create a generic invite link that anyone can use
+                </p>
+              </div>
               <Button onClick={createInvitation} className="w-full">
                 <Copy className="mr-2 h-4 w-4" />
                 Generate & Copy Invite Link

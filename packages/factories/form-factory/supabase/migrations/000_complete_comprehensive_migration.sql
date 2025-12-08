@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS user_organization_roles (
 CREATE TABLE IF NOT EXISTS invitations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  email TEXT NOT NULL,
+  email TEXT,  -- Made nullable to allow generic invite links
   role TEXT NOT NULL CHECK (role IN ('super_manager', 'manager', 'staff')),
   token TEXT UNIQUE NOT NULL,
   created_by UUID REFERENCES auth.users(id),
