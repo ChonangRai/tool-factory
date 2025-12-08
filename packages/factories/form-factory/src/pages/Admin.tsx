@@ -114,7 +114,7 @@ interface Folder {
 
 
 export default function Admin() {
-  const { signOut, user, organizationId, isManager } = useAuth();
+  const { signOut, user, organizationId, isManager, orgRole } = useAuth();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [forms, setForms] = useState<Form[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -1126,15 +1126,18 @@ export default function Admin() {
                               </Button>
                             </>
                           ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteForm(form.id)}
-                              title="Archive Form"
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Archive className="h-4 w-4" />
-                            </Button>
+                            // Only show archive button for managers and super_managers
+                            (orgRole === 'manager' || orgRole === 'super_manager') && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteForm(form.id)}
+                                title="Archive Form"
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Archive className="h-4 w-4" />
+                              </Button>
+                            )
                           )}
                         </div>
                       </TableCell>

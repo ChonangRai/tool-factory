@@ -121,45 +121,6 @@ export default function DashboardLayout() {
               </NavLink>
             ))}
           </nav>
-
-          {/* Footer */}
-          <div className="p-4 border-t bg-gray-50">
-            {!isCollapsed ? (
-              <>
-                <div className="flex items-center mb-4 px-2">
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold mr-3">
-                    {user?.email?.[0].toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {user?.user_metadata?.name || 'User'}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {user?.email}
-                    </p>
-                  </div>
-                </div>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
-                  onClick={handleSignOut}
-                >
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Sign Out
-                </Button>
-              </>
-            ) : (
-              <Button 
-                variant="outline" 
-                size="icon"
-                className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
-                onClick={handleSignOut}
-                title="Sign Out"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
         </div>
       </aside>
 
