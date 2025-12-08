@@ -421,13 +421,15 @@ BEGIN
 
   -- 3. Standard Signup (Create New Org) if no valid invite found
   IF new_org_id IS NULL THEN
-    org_name := NEW.raw_user_meta_data->>'organization_name';
+    -- Determine organization name and slug
+    org_name := COALESCE(
+      NEW.raw_user_meta_data->>'organization_name', 
+      NEW.raw_user_meta_data->>'name' || '''s Workspace',
+      'ToolFactory Workspace'
+    );
+    
     INSERT INTO public.debug_logs(step, details) 
     VALUES ('org_name_extracted', jsonb_build_object('org_name', org_name)::text);
-
-    IF org_name IS NULL OR org_name = '' THEN
-      org_name := split_part(NEW.email, '@', 1) || '''s Organization';
-    END IF;
 
     org_slug := lower(regexp_replace(org_name, '[^a-zA-Z0-9]+', '-', 'g'));
     org_slug := trim(both '-' FROM org_slug);

@@ -124,7 +124,7 @@ export function useAuth() {
         emailRedirectTo: redirectUrl,
         data: {
           name,
-          organization_name: !inviteToken ? (window as any).signupOrgName || name + "'s Organization" : undefined,
+          organization_name: !inviteToken ? (window as any).signupOrgName || name + "'s Workspace" : undefined,
           invite_token: inviteToken,
         },
       },

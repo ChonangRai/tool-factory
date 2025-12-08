@@ -90,7 +90,7 @@ export default function Settings() {
 
       if (error) throw error;
 
-      toast.success('Organization updated successfully');
+      toast.success('Workspace updated successfully');
     } catch (error: any) {
       console.error('Error updating organization:', error);
       toast.error('Failed to update organization');
@@ -115,7 +115,7 @@ export default function Settings() {
           {isManager && (
             <TabsTrigger value="organization">
               <Building2 className="mr-2 h-4 w-4" />
-              Organization
+              Workspace
             </TabsTrigger>
           )}
           <TabsTrigger value="notifications">
@@ -215,14 +215,14 @@ export default function Settings() {
           <TabsContent value="organization" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Organization Details</CardTitle>
+                <CardTitle>Workspace Details</CardTitle>
                 <CardDescription>
                   Manage your organization settings and information
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="orgName">Organization Name</Label>
+                  <Label htmlFor="orgName">Workspace Name</Label>
                   <Input
                     id="orgName"
                     type="text"
@@ -233,7 +233,7 @@ export default function Settings() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="orgSlug">Organization Slug</Label>
+                  <Label htmlFor="orgSlug">Workspace Slug</Label>
                   <Input
                     id="orgSlug"
                     type="text"

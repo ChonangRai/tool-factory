@@ -225,9 +225,9 @@ export default function UserManagement() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Organization Members</CardTitle>
+          <CardTitle>Workspace Members</CardTitle>
           <CardDescription>
-            {users.length} member{users.length !== 1 ? 's' : ''} in your organization
+            {users.length} member{users.length !== 1 ? 's' : ''} in your workspace
           </CardDescription>
         </CardHeader>
         <CardContent>

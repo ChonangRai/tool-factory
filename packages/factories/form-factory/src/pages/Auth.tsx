@@ -65,7 +65,7 @@ export default function Auth() {
       } else {
         // Signup flow
         if (!inviteToken && !organizationName.trim()) {
-          toast.error('Organization name is required');
+          toast.error('Workspace name is required');
           setLoading(false);
           return;
         }
@@ -160,7 +160,7 @@ export default function Auth() {
 
                 {!inviteToken && (
                   <div className="space-y-2">
-                    <Label htmlFor="organization">Organization Name</Label>
+                    <Label htmlFor="organization">Workspace Name</Label>
                     <Input
                       id="organization"
                       type="text"
