@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRouteProps) {
-  const { user, loading, isAdmin } = useAuth();
+  const { user, loading, isAdmin, organizationId } = useAuth();
 
   if (loading) {
     return (
@@ -22,7 +22,8 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
     return <Navigate to="/auth" replace />;
   }
 
-  if (requireAdmin && !isAdmin) {
+  // Check if user has organization access (any role in an organization)
+  if (requireAdmin && !organizationId) {
     return <Navigate to="/" replace />;
   }
 
