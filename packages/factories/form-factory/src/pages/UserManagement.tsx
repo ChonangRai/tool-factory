@@ -62,7 +62,7 @@ interface OrganizationUser {
 }
 
 export default function UserManagement() {
-  const { organizationId, orgRole } = useAuth();
+  const { organizationId, orgRole, user: currentUser } = useAuth();
   const [users, setUsers] = useState<OrganizationUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
@@ -76,24 +76,44 @@ export default function UserManagement() {
 
   const loadUsers = async () => {
     try {
-      const { data, error } = await (supabase as any)
+      // Get user organization roles
+      const { data: roles, error: rolesError } = await (supabase as any)
         .from('user_organization_roles')
-        .select(`
-          id,
-          user_id,
-          role,
-          created_at,
-          profiles:user_id (
-            email,
-            name
-          )
-        `)
+        .select('id, user_id, role, created_at')
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (rolesError) throw rolesError;
 
-      setUsers(data || []);
+      if (!roles || roles.length === 0) {
+        setUsers([]);
+        setLoading(false);
+        return;
+      }
+
+      // Get user IDs
+      const userIds = roles.map((r: any) => r.user_id);
+
+      // Get profiles for these users
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, email, name')
+        .in('id', userIds);
+
+      if (profilesError) throw profilesError;
+
+      // Create a map of profiles by user_id
+      const profileMap = new Map(
+        (profiles || []).map(p => [p.id, p])
+      );
+
+      // Combine the data
+      const combined = roles.map((role: any) => ({
+        ...role,
+        profiles: profileMap.get(role.user_id) || { email: 'Unknown', name: 'Unknown' }
+      }));
+
+      setUsers(combined);
       setLoading(false);
     } catch (error: any) {
       console.error('Error loading users:', error);
@@ -250,7 +270,7 @@ export default function UserManagement() {
                     </TableCell>
                     <TableCell>{user.profiles?.email}</TableCell>
                     <TableCell>
-                      {orgRole === 'super_manager' || (orgRole === 'manager' && user.role === 'staff') ? (
+                      {(orgRole === 'super_manager' || (orgRole === 'manager' && user.role === 'staff')) && user.user_id !== currentUser?.id ? (
                         <Select
                           value={user.role}
                           onValueChange={(value) => handleRoleChange(user.user_id, value)}
@@ -281,7 +301,7 @@ export default function UserManagement() {
                     </TableCell>
                     <TableCell>{format(new Date(user.created_at), 'MMM dd, yyyy')}</TableCell>
                     <TableCell className="text-right">
-                      {(orgRole === 'super_manager' || (orgRole === 'manager' && user.role === 'staff')) && (
+                      {(orgRole === 'super_manager' || (orgRole === 'manager' && user.role === 'staff')) && user.user_id !== currentUser?.id && (
                         <Button
                           variant="ghost"
                           size="sm"
