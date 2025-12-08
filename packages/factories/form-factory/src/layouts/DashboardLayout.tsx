@@ -1,7 +1,5 @@
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/hooks/useAuth';
-import { Button } from '@/components/ui/button';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -14,7 +12,11 @@ import {
   Building2,
   Archive,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
+import { NotificationBell } from '@/components/NotificationBell';
+import { ProfileDropdown } from '@/components/ProfileDropdown';
 
 export default function DashboardLayout() {
   const { signOut, user, isManager, organizationId } = useAuth();
@@ -81,7 +83,7 @@ export default function DashboardLayout() {
             {!isCollapsed && (
               <div className="flex items-center">
                 <Building2 className="h-6 w-6 text-primary mr-2" />
-                <span className="font-bold text-lg">FormFiller</span>
+                <span className="font-bold text-lg">Form Factory</span>
               </div>
             )}
             {isCollapsed && <Building2 className="h-6 w-6 text-primary mx-auto" />}
@@ -168,13 +170,25 @@ export default function DashboardLayout() {
           isCollapsed ? "lg:ml-16" : "lg:ml-64"
         )}
       >
-        {/* Mobile Header */}
-        <header className="lg:hidden h-16 bg-white border-b flex items-center px-4 justify-between">
+        {/* Desktop & Mobile Header */}
+        <header className="h-16 bg-white border-b flex items-center px-4 justify-between sticky top-0 z-30">
+          {/* Left: Mobile Menu + Title */}
           <div className="flex items-center">
-            <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(true)}>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setIsSidebarOpen(true)}
+              className="lg:hidden"
+            >
               <Menu className="h-6 w-6" />
             </Button>
-            <span className="ml-2 font-bold text-lg">FormFiller</span>
+            <span className="ml-2 font-bold text-lg lg:hidden">Form Factory</span>
+          </div>
+
+          {/* Right: Notifications + Profile */}
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <ProfileDropdown />
           </div>
         </header>
 
