@@ -19,7 +19,7 @@ export interface StorageProvider {
  * Future implementation: Azure Blob Storage (update this file and env vars only)
  */
 class SupabaseStorageProvider implements StorageProvider {
-  private bucket = 'receipts';
+  private bucket = 'submissions';
 
   async uploadFile(file: File, path: string): Promise<StorageUploadResult> {
     const { data, error } = await supabase.storage

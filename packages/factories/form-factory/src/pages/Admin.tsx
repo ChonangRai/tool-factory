@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import {
   Loader2,
   LogOut,
@@ -160,6 +161,20 @@ export default function Admin() {
   const [previewReceipt, setPreviewReceipt] = useState<{ url: string; filename: string } | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [formFilter, setFormFilter] = useState<'all' | 'active' | 'archived'>('active');
+
+  // Confirm dialog states
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+    variant?: 'default' | 'destructive';
+  }>({
+    open: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
 
   const loadForms = async () => {
     try {
@@ -344,33 +359,39 @@ export default function Admin() {
   };
 
   const handleDeleteFolder = async (folderId: string) => {
-    if (!confirm('Are you sure you want to delete this folder? Forms inside will be moved to root.')) return;
+    setConfirmDialog({
+      open: true,
+      title: 'Delete Folder',
+      description: 'Are you sure you want to delete this folder? Forms inside will be moved to root.',
+      variant: 'destructive',
+      onConfirm: async () => {
+        try {
+          // First move forms to root
+          const { error: moveError } = await supabase
+            .from('forms')
+            .update({ folder_id: null })
+            .eq('folder_id', folderId);
 
-    try {
-      // First move forms to root
-      const { error: moveError } = await supabase
-        .from('forms')
-        .update({ folder_id: null })
-        .eq('folder_id', folderId);
+          if (moveError) throw moveError;
 
-      if (moveError) throw moveError;
+          // Then delete folder
+          const { error: deleteError } = await supabase
+            .from('folders')
+            .delete()
+            .eq('id', folderId);
 
-      // Then delete folder
-      const { error: deleteError } = await supabase
-        .from('folders')
-        .delete()
-        .eq('id', folderId);
+          if (deleteError) throw deleteError;
 
-      if (deleteError) throw deleteError;
-
-      toast.success('Folder deleted successfully');
-      if (currentFolderId === folderId) setCurrentFolderId(null);
-      loadFolders();
-      loadForms();
-    } catch (error: any) {
-      console.error('Error deleting folder:', error);
-      toast.error('Failed to delete folder');
-    }
+          toast.success('Folder deleted successfully');
+          if (currentFolderId === folderId) setCurrentFolderId(null);
+          loadFolders();
+          loadForms();
+        } catch (error: any) {
+          console.error('Error deleting folder:', error);
+          toast.error('Failed to delete folder');
+        }
+      },
+    });
   };
 
   const handleMoveForm = async (formId: string, targetFolderId: string | null) => {
@@ -638,22 +659,28 @@ export default function Admin() {
 
 
   const handleDeleteForm = async (formId: string) => {
-    if (!confirm('Are you sure you want to archive this form?')) return;
+    setConfirmDialog({
+      open: true,
+      title: 'Archive Form',
+      description: 'Are you sure you want to archive this form? You can restore it later from the Archived tab.',
+      variant: 'destructive',
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase
+            .from('forms')
+            .update({ deleted_at: new Date().toISOString() } as any)
+            .eq('id', formId);
 
-    try {
-      const { error } = await supabase
-        .from('forms')
-        .update({ deleted_at: new Date().toISOString() } as any)
-        .eq('id', formId);
+          if (error) throw error;
 
-      if (error) throw error;
-
-      toast.success('Form archived successfully');
-      loadForms();
-    } catch (error: any) {
-      console.error('Error archiving form:', error);
-      toast.error('Failed to archive form');
-    }
+          toast.success('Form archived successfully');
+          loadForms();
+        } catch (error: any) {
+          console.error('Error archiving form:', error);
+          toast.error('Failed to archive form');
+        }
+      },
+    });
   };
 
   const handleRestoreForm = async (formId: string) => {
@@ -674,22 +701,28 @@ export default function Admin() {
   };
 
   const handlePermanentDeleteForm = async (formId: string) => {
-    if (!confirm('Are you sure you want to PERMANENTLY delete this form? This action cannot be undone and all submissions will be lost.')) return;
+    setConfirmDialog({
+      open: true,
+      title: 'Permanently Delete Form',
+      description: 'Are you sure you want to PERMANENTLY delete this form? This action cannot be undone and all submissions will be lost.',
+      variant: 'destructive',
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase
+            .from('forms')
+            .delete()
+            .eq('id', formId);
 
-    try {
-      const { error } = await supabase
-        .from('forms')
-        .delete()
-        .eq('id', formId);
+          if (error) throw error;
 
-      if (error) throw error;
-
-      toast.success('Form permanently deleted');
-      loadForms();
-    } catch (error: any) {
-      console.error('Error deleting form:', error);
-      toast.error('Failed to delete form');
-    }
+          toast.success('Form permanently deleted');
+          loadForms();
+        } catch (error: any) {
+          console.error('Error deleting form:', error);
+          toast.error('Failed to delete form');
+        }
+      },
+    });
   };
 
   // Calculate stats
@@ -1274,6 +1307,16 @@ export default function Admin() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Confirm Dialog */}
+        <ConfirmDialog
+          open={confirmDialog.open}
+          onOpenChange={(open) => setConfirmDialog({ ...confirmDialog, open })}
+          title={confirmDialog.title}
+          description={confirmDialog.description}
+          onConfirm={confirmDialog.onConfirm}
+          variant={confirmDialog.variant}
+        />
     </div>
   );
 }

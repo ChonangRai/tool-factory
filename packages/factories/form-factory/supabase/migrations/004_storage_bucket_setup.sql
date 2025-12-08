@@ -1,16 +1,20 @@
--- Create storage bucket and policies for form submissions
+-- Create storage bucket via SQL (instead of manual Dashboard creation)
 
--- Note: Create the bucket via Supabase Dashboard first:
--- 1. Go to Storage in Supabase Dashboard
--- 2. Click "New bucket"
--- 3. Name: "submissions"
--- 4. Enable "Public bucket" option
--- 5. Click "Create bucket"
+-- Insert the bucket into the storage.buckets table
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'submissions',
+  'submissions',
+  true,
+  52428800, -- 50MB limit
+  ARRAY['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp', 'application/pdf']
+)
+ON CONFLICT (id) DO NOTHING;
 
--- Then run these policies:
+-- Set up RLS policies for the submissions bucket
 
 -- Allow anyone to upload files (for form submissions)
-CREATE POLICY "Anyone can upload submission files"
+CREATE POLICY IF NOT EXISTS "Anyone can upload submission files"
 ON storage.objects
 FOR INSERT
 WITH CHECK (
@@ -18,7 +22,7 @@ WITH CHECK (
 );
 
 -- Allow workspace members to view their organization's files
-CREATE POLICY "Workspace members can view files"
+CREATE POLICY IF NOT EXISTS "Workspace members can view files"
 ON storage.objects
 FOR SELECT
 USING (
@@ -32,7 +36,7 @@ USING (
 );
 
 -- Allow workspace members to delete their organization's files
-CREATE POLICY "Workspace members can delete files"
+CREATE POLICY IF NOT EXISTS "Workspace members can delete files"
 ON storage.objects
 FOR DELETE
 USING (
