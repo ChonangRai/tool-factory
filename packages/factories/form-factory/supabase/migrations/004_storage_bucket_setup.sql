@@ -13,8 +13,13 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Set up RLS policies for the submissions bucket
 
+-- Drop existing policies to avoid conflicts
+DROP POLICY IF EXISTS "Anyone can upload submission files" ON storage.objects;
+DROP POLICY IF EXISTS "Workspace members can view files" ON storage.objects;
+DROP POLICY IF EXISTS "Workspace members can delete files" ON storage.objects;
+
 -- Allow anyone to upload files (for form submissions)
-CREATE POLICY IF NOT EXISTS "Anyone can upload submission files"
+CREATE POLICY "Anyone can upload submission files"
 ON storage.objects
 FOR INSERT
 WITH CHECK (
@@ -22,7 +27,7 @@ WITH CHECK (
 );
 
 -- Allow workspace members to view their organization's files
-CREATE POLICY IF NOT EXISTS "Workspace members can view files"
+CREATE POLICY "Workspace members can view files"
 ON storage.objects
 FOR SELECT
 USING (
@@ -36,7 +41,7 @@ USING (
 );
 
 -- Allow workspace members to delete their organization's files
-CREATE POLICY IF NOT EXISTS "Workspace members can delete files"
+CREATE POLICY "Workspace members can delete files"
 ON storage.objects
 FOR DELETE
 USING (

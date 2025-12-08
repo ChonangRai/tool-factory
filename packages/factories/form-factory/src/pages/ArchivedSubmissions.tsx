@@ -156,8 +156,7 @@ export default function ArchivedSubmissions() {
       const { error } = await (supabase as any)
         .from('submissions')
         .update({ 
-          deleted_at: null,
-          archived_by: null 
+          deleted_at: null
         })
         .eq('id', submissionId);
 
