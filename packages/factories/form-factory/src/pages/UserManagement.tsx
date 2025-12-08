@@ -183,12 +183,25 @@ export default function UserManagement() {
 
   const createInvitation = async () => {
     try {
+      // Validate email if provided
+      if (inviteEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail)) {
+        toast.error('Please enter a valid email address');
+        return;
+      }
+
+      // Generate secure token
+      const token = crypto.randomUUID();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7); // Expires in 7 days
+
       const { data, error } = await (supabase as any)
         .from('invitations')
         .insert({
           organization_id: organizationId,
           role: 'staff', // Default role
           email: inviteEmail || null, // Optional email for targeted invites
+          token: token,
+          expires_at: expiresAt.toISOString(),
         })
         .select('token')
         .single();
