@@ -108,12 +108,19 @@ export default function UserManagement() {
         (profiles || []).map(p => [p.id, p])
       );
 
-      // Combine the data
-      const combined = roles.map((role: any) => ({
-        ...role,
-        profiles: profileMap.get(role.user_id) || { email: 'Unknown', name: 'Unknown' }
-      }));
+      // Combine the data - ensure we're using the actual profile data
+      const combined = roles.map((role: any) => {
+        const profile = profileMap.get(role.user_id);
+        return {
+          ...role,
+          profiles: {
+            email: profile?.email || 'Unknown',
+            name: profile?.name || profile?.email?.split('@')[0] || 'Unknown'
+          }
+        };
+      });
 
+      console.log('Loaded users:', combined); // Debug log
       setUsers(combined);
       setLoading(false);
     } catch (error: any) {
