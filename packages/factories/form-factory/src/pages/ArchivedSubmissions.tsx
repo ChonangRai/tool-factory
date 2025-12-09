@@ -54,7 +54,7 @@ interface ArchivedSubmission {
 }
 
 export default function ArchivedSubmissions() {
-  const { user, organizationId } = useAuth();
+  const { user, organizationId, orgRole } = useAuth();
   const [submissions, setSubmissions] = useState<ArchivedSubmission[]>([]);
   const [forms, setForms] = useState<any[]>([]); // Using any for now to match existing loose typing, ideally define interface
   const [loading, setLoading] = useState(true);
@@ -298,14 +298,17 @@ export default function ArchivedSubmissions() {
                               <RotateCcw className="h-4 w-4 mr-1" />
                               Restore
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setItemToDelete({ type: 'form', id: form.id })}
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {/* Only super_managers can permanently delete */}
+                            {orgRole === 'super_manager' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setItemToDelete({ type: 'form', id: form.id })}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -381,14 +384,17 @@ export default function ArchivedSubmissions() {
                               <RotateCcw className="h-4 w-4 mr-1" />
                               Restore
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setItemToDelete({ type: 'submission', id: submission.id })}
-                              className="text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {/* Only super_managers can permanently delete */}
+                            {orgRole === 'super_manager' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setItemToDelete({ type: 'submission', id: submission.id })}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

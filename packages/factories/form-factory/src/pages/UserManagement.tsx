@@ -143,20 +143,20 @@ export default function UserManagement() {
 
   const handleRemoveUser = async (userId: string) => {
     try {
-      const { error } = await (supabase as any)
-        .from('user_organization_roles')
-        .delete()
-        .eq('user_id', userId)
-        .eq('organization_id', organizationId);
+      // Call RPC to completely delete user from auth.users
+      // This will cascade to profiles and user_organization_roles
+      const { error } = await (supabase as any).rpc('delete_user_completely', {
+        p_user_id: userId
+      });
 
       if (error) throw error;
 
-      toast.success('User removed from workspace');
+      toast.success('User permanently deleted from system');
       setUserToDelete(null);
       loadUsers();
     } catch (error: any) {
       console.error('Error removing user:', error);
-      toast.error('Failed to remove user');
+      toast.error('Failed to remove user: ' + error.message);
     }
   };
 
