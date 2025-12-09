@@ -34,6 +34,36 @@ export default function Auth() {
   const inviteToken = searchParams.get('token');
   const mode = searchParams.get('mode');
 
+  // Handle email verification callback
+  useEffect(() => {
+    const handleEmailVerification = async () => {
+      const error = searchParams.get('error');
+      const errorDescription = searchParams.get('error_description');
+      const type = searchParams.get('type');
+
+      if (error) {
+        // Handle verification errors
+        if (error === 'access_denied' || errorDescription?.includes('expired')) {
+          toast.error('Verification link has expired. Please sign up again or request a new verification email.');
+        } else if (errorDescription?.includes('already confirmed')) {
+          toast.info('Your email is already verified. You can sign in now.');
+        } else {
+          toast.error('Email verification failed. Please try again or contact support.');
+        }
+        navigate('/auth', { replace: true });
+      } else if (type === 'signup') {
+        // Email verification successful
+        toast.success('Email verified successfully! You can now sign in to your account.', {
+          duration: 5000,
+        });
+        setIsLogin(true);
+        navigate('/auth', { replace: true });
+      }
+    };
+
+    handleEmailVerification();
+  }, [searchParams, navigate]);
+
   useEffect(() => {
     if (mode === 'signup') {
       setIsLogin(false);
@@ -81,15 +111,30 @@ export default function Auth() {
         delete (window as any).signupOrgName;
 
         if (error) {
+          console.error('Signup error:', error);
+          
+          // Handle specific error cases
           if (error.message.includes('User already registered')) {
-            toast.error('An account with this email already exists');
+            toast.error('An account with this email already exists. Please sign in instead.');
+          } else if (error.message.includes('Email rate limit exceeded')) {
+            toast.error('Too many signup attempts. Please try again in a few minutes.');
+          } else if (inviteToken && error.message.includes('duplicate')) {
+            toast.error('This invitation has already been used. Please contact your administrator for a new invite link.');
           } else {
-            toast.error(error.message);
+            toast.error(error.message || 'Failed to create account');
           }
         } else {
-          toast.success('Account created! Please check your email to verify your account.', {
-            duration: 5000,
-          });
+          // Check if using an invite token
+          if (inviteToken) {
+            toast.success('Account created! You can now sign in to access your workspace.', {
+              duration: 5000,
+            });
+          } else {
+            toast.success('Account created! Please check your email to verify your account.', {
+              duration: 5000,
+            });
+          }
+          
           // Clear form and switch to login
           setEmail('');
           setPassword('');
@@ -100,7 +145,13 @@ export default function Auth() {
       }
     } catch (error: any) {
       console.error('Auth Error:', error);
-      toast.error(error.message || 'An error occurred');
+      
+      // Handle network or unexpected errors
+      if (error.message?.includes('Failed to fetch') || error.message?.includes('network')) {
+        toast.error('Network error. Please check your connection and try again.');
+      } else {
+        toast.error(error.message || 'An unexpected error occurred. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
