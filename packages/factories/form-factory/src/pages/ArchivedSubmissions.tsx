@@ -172,32 +172,49 @@ export default function ArchivedSubmissions() {
 
   const handlePermanentDeleteSubmission = async (submissionId: string) => {
     try {
-      // Delete associated files from storage
-      const submission = submissions.find(s => s.id === submissionId);
-      if (submission?.files) {
-        for (const file of submission.files) {
-          try {
-            await storage.deleteFile(file.path);
-          } catch (err) {
-            console.error('Error deleting file:', err);
-          }
+      // 1. Get all files associated with this submission
+      const { data: files, error: filesError } = await supabase
+        .from('files')
+        .select('path')
+        .eq('submission_id', submissionId);
+
+      if (filesError) throw filesError;
+
+      // 2. Delete files from storage
+      if (files && files.length > 0) {
+        const filePaths = files.map(f => f.path);
+        const { error: storageError } = await supabase.storage
+          .from('form-submissions')
+          .remove(filePaths);
+
+        if (storageError) {
+          console.error('Error deleting files from storage:', storageError);
+          // Continue anyway - we still want to delete the database records
         }
       }
 
-      // Delete submission from database
-      const { error } = await supabase
+      // 3. Delete file records from database
+      const { error: deleteFilesError } = await supabase
+        .from('files')
+        .delete()
+        .eq('submission_id', submissionId);
+
+      if (deleteFilesError) throw deleteFilesError;
+
+      // 4. Now delete the submission
+      const { error: deleteError } = await supabase
         .from('submissions')
         .delete()
         .eq('id', submissionId);
 
-      if (error) throw error;
+      if (deleteError) throw deleteError;
 
       toast.success('Submission permanently deleted');
       setItemToDelete(null);
       loadArchivedSubmissions();
     } catch (error: any) {
       console.error('Error permanently deleting submission:', error);
-      toast.error('Failed to delete submission');
+      toast.error('Failed to permanently delete submission: ' + error.message);
     }
   };
 

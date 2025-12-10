@@ -13,6 +13,7 @@ import {
   Copy,
   Trash2,
   Edit2,
+  UserMinus,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import {
@@ -49,6 +50,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+
+// Helper function to check if current user can remove target user
+const canRemoveUser = (
+  currentRole: string | null,
+  targetRole: string,
+  targetUserId: string,
+  currentUserId: string | undefined
+) => {
+  // Can't remove yourself
+  if (!currentUserId || targetUserId === currentUserId) return false;
+  
+  // Super manager can remove manager and staff
+  if (currentRole === 'super_manager' && ['manager', 'staff'].includes(targetRole)) {
+    return true;
+  }
+  
+  // Manager can remove staff only
+  if (currentRole === 'manager' && targetRole === 'staff') {
+    return true;
+  }
+  
+  return false;
+};
 
 interface OrganizationUser {
   id: string;
@@ -68,6 +93,16 @@ export default function UserManagement() {
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
+  
+  // New state for removal dialog
+  const [showRemovalDialog, setShowRemovalDialog] = useState(false);
+  const [userToRemove, setUserToRemove] = useState<{userId: string; userName: string} | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  }>({ open: false, title: '', description: '', onConfirm: () => {} });
 
   useEffect(() => {
     if (organizationId) {
@@ -131,12 +166,43 @@ export default function UserManagement() {
   };
 
   const handleRoleChange = async (userId: string, newRole: string) => {
+    // Check if promoting to super_manager - show warning
+    if (newRole === 'super_manager' && orgRole === 'super_manager') {
+      const targetUser = users.find(u => u.user_id === userId);
+      setConfirmDialog({
+        open: true,
+        title: 'Transfer Leadership?',
+        description: `Only one Super Manager is allowed per workspace. Promoting ${targetUser?.profiles?.name || 'this user'} will automatically demote you to Manager. Do you want to continue?`,
+        onConfirm: async () => {
+          try {
+            // Use RPC function to bypass RLS issues
+            const { error } = await (supabase as any).rpc('update_user_role', {
+              p_user_id: userId,
+              p_organization_id: organizationId,
+              p_new_role: newRole
+            });
+
+            if (error) throw error;
+
+            toast.success('Leadership transferred successfully. You are now a Manager.');
+            setConfirmDialog({ open: false, title: '', description: '', onConfirm: () => {} });
+            loadUsers();
+          } catch (error: any) {
+            console.error('Error updating role:', error);
+            toast.error('Failed to update role: ' + error.message);
+          }
+        }
+      });
+      return;
+    }
+
+    // Normal role change using RPC
     try {
-      const { error } = await (supabase as any)
-        .from('user_organization_roles')
-        .update({ role: newRole })
-        .eq('user_id', userId)
-        .eq('organization_id', organizationId);
+      const { error } = await (supabase as any).rpc('update_user_role', {
+        p_user_id: userId,
+        p_organization_id: organizationId,
+        p_new_role: newRole
+      });
 
       if (error) throw error;
 
@@ -144,7 +210,7 @@ export default function UserManagement() {
       loadUsers();
     } catch (error: any) {
       console.error('Error updating role:', error);
-      toast.error('Failed to update role');
+      toast.error('Failed to update role: ' + error.message);
     }
   };
 
@@ -332,14 +398,20 @@ export default function UserManagement() {
                     </TableCell>
                     <TableCell>{format(new Date(user.created_at), 'MMM dd, yyyy')}</TableCell>
                     <TableCell className="text-right">
-                      {(orgRole === 'super_manager' || (orgRole === 'manager' && user.role === 'staff')) && user.user_id !== currentUser?.id && (
+                      {/* Only show remove button if user has permission */}
+                      {canRemoveUser(orgRole, user.role, user.user_id, currentUser?.id) && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setUserToDelete(user.user_id)}
-                          disabled={user.role === 'super_manager' && orgRole !== 'super_manager'}
+                          onClick={() => {
+                            const userName = user.profiles?.name || user.profiles?.email || 'this user';
+                            setUserToRemove({ userId: user.user_id, userName });
+                            setShowRemovalDialog(true);
+                          }}
+                          className="text-destructive hover:text-destructive"
                         >
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                          <UserMinus className="h-4 w-4 mr-1" />
+                          Remove
                         </Button>
                       )}
                     </TableCell>
@@ -351,19 +423,111 @@ export default function UserManagement() {
         </CardContent>
       </Card>
 
+      {/* User Removal Dialog */}
+      <AlertDialog open={showRemovalDialog} onOpenChange={setShowRemovalDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {userToRemove?.userName}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Choose how to remove this user from your workspace:
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4">
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  if (!userToRemove) return;
+                  try {
+                    // Deactivate: Just remove from organization
+                    const { error } = await supabase
+                      .from('user_organization_roles')
+                      .delete()
+                      .eq('user_id', userToRemove.userId)
+                      .eq('organization_id', organizationId);
+
+                    if (error) throw error;
+
+                    toast.success('User removed from workspace.');
+                    setShowRemovalDialog(false);
+                    setUserToRemove(null);
+                    loadUsers();
+                  } catch (error: any) {
+                    toast.error('Failed to remove user: ' + error.message);
+                  }
+                }}
+              >
+                <UserMinus className="h-4 w-4 mr-2" />
+                Deactivate - Remove from workspace only (Recommended)
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  if (!userToRemove) return;
+                  try {
+                    // Permanent delete: Call RPC
+                    const { error } = await (supabase as any).rpc('delete_user_completely', {
+                      p_user_id: userToRemove.userId
+                    });
+
+                    if (error) {
+                      if (error.message?.includes('Only super_managers')) {
+                        toast.error('Permission denied: Only Super Managers can permanently delete users.');
+                      } else {
+                        throw error;
+                      }
+                    } else {
+                      toast.success('User permanently deleted. Their forms have been reassigned to you.');
+                      setShowRemovalDialog(false);
+                      setUserToRemove(null);
+                      loadUsers();
+                    }
+                  } catch (error: any) {
+                    toast.error('Failed to delete user: ' + error.message);
+                  }
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Permanent Delete - Remove completely (Cannot be undone)
+              </Button>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm Dialog for Super Manager Promotion */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => !open && setConfirmDialog({ open: false, title: '', description: '', onConfirm: () => {} })}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        onConfirm={confirmDialog.onConfirm}
+        variant="destructive"
+      />
+
+      {/* Old Delete Dialog - kept for backward compatibility */}
       <AlertDialog open={!!userToDelete} onOpenChange={() => setUserToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove User</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to remove this user from your organization? 
-              This action cannot be undone.
+              Are you sure you want to permanently delete this user? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => userToDelete && handleRemoveUser(userToDelete)}>
-              Remove
+            <AlertDialogAction
+              onClick={() => {
+                if (userToDelete) {
+                  handleRemoveUser(userToDelete);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
