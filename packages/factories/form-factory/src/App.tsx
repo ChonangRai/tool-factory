@@ -13,6 +13,7 @@ import Admin from "./pages/Admin";
 import AllSubmissions from "./pages/AllSubmissions";
 import ArchivedSubmissions from "./pages/ArchivedSubmissions";
 import UserManagement from "./pages/UserManagement";
+import FormBuilder from "./pages/FormBuilder";
 import Settings from "./pages/Settings";
 import DashboardLayout from "./layouts/DashboardLayout";
 import NotFound from "./pages/NotFound";
@@ -42,6 +43,8 @@ const App = () => (
           >
             <Route index element={<Dashboard />} />
             <Route path="forms" element={<Admin />} />
+            <Route path="forms/new" element={<FormBuilder />} />
+            <Route path="forms/:formId/edit" element={<FormBuilder />} />
             <Route path="users" element={<UserManagement />} />
             <Route path="submissions" element={<AllSubmissions />} />
             <Route path="archived" element={<ArchivedSubmissions />} />

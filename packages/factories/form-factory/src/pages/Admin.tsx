@@ -67,7 +67,6 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { storage } from '@/lib/storage';
-import { FormFieldEditor } from '@/components/FormFieldEditor';
 import { FormField } from '@/types/formFields';
 
 interface Submission {
@@ -125,11 +124,8 @@ export default function Admin() {
   // Preview dialog state: null = closed, otherwise holds form id
   const [previewFormId, setPreviewFormId] = useState<string | null>(null);
   const isPreviewOpen = !!previewFormId;
-  const [newFormName, setNewFormName] = useState('');
-  const [newFormFields, setNewFormFields] = useState<FormField[]>([]);
-  const [isCreatingForm, setIsCreatingForm] = useState(false);
-  const [isSubmittingForm, setIsSubmittingForm] = useState(false);
-  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  // Dialog states
+  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [stats, setStats] = useState({
@@ -138,10 +134,7 @@ export default function Admin() {
     reviewed: 0,
     totalAmount: 0,
   });
-
-  // Dialog states
-  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
-  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [renameFolderId, setRenameFolderId] = useState<string | null>(null);
   const [renameFolderName, setRenameFolderName] = useState('');
@@ -259,56 +252,7 @@ export default function Admin() {
 
 
 
-  const handleCreateForm = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFormName.trim()) {
-      toast.error('Form name is required');
-      return;
-    }
-    if (newFormFields.length === 0) {
-      toast.error('Please add at least one field to the form');
-      return;
-    }
 
-    setIsSubmittingForm(true);
-    try {
-      const slug = newFormName.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
-      
-      const formData: any = {
-        name: newFormName,
-        slug: slug,
-        folder_id: currentFolderId,
-        settings: {
-          fields: newFormFields,
-        },
-      };
-
-      // Add organization_id if user has one
-      if (organizationId) {
-        formData.organization_id = organizationId;
-      }
-      if (user?.id) {
-        formData.created_by = user.id;
-      }
-
-      const { error } = await supabase
-        .from('forms')
-        .insert(formData);
-
-      if (error) throw error;
-
-      toast.success('Form created successfully');
-      setNewFormName('');
-      setNewFormFields([]);
-      setIsCreatingForm(false);
-      loadForms();
-    } catch (error: any) {
-      console.error('Error creating form:', error);
-      toast.error('Failed to create form');
-    } finally {
-      setIsSubmittingForm(false);
-    }
-  };
 
   const handleCreateFolder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -932,52 +876,12 @@ export default function Admin() {
                 </DialogContent>
               </Dialog>
 
-              <Dialog open={isCreateFormOpen} onOpenChange={setIsCreateFormOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="default" size="sm">
-                    <Plus className="mr-2 h-4 w-4" />
-                    New Form
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl">
-                  <DialogHeader>
-                    <DialogTitle>Create New Form</DialogTitle>
-                    <DialogDescription>
-                      Create a new form to collect submissions.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleCreateForm} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="form-name">Form Name</Label>
-                      <Input
-                        id="form-name"
-                        placeholder="e.g., Expense Report Nov"
-                        value={newFormName}
-                        onChange={(e) => setNewFormName(e.target.value)}
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label>Form Fields</Label>
-                      <FormFieldEditor 
-                        fields={newFormFields} 
-                        onChange={setNewFormFields}
-                      />
-                    </div>
-
-                    <DialogFooter>
-                      <Button type="submit" disabled={!newFormName.trim() || isSubmittingForm}>
-                        {isSubmittingForm ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Plus className="mr-2 h-4 w-4" />
-                        )}
-                        Create Form
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
+              <Button variant="default" size="sm" asChild>
+                <Link to={`/dashboard/forms/new${currentFolderId ? `?folderId=${currentFolderId}` : ''}`}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  New Form
+                </Link>
+              </Button>
             </>
           )}
         </div>
@@ -1119,6 +1023,17 @@ export default function Admin() {
                             title="Preview Form"
                           >
                             <Eye className="h-4 w-4" />
+                          </Button>
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            asChild
+                            title="Edit Form"
+                          >
+                            <Link to={`/dashboard/forms/${form.id}/edit`}>
+                              <Edit2 className="h-4 w-4" />
+                            </Link>
                           </Button>
                           
                           {/* Move Action (Only for active forms) */}
