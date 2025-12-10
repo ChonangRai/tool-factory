@@ -62,7 +62,7 @@ interface Submission {
 }
 
 export default function Dashboard() {
-  const { user, organizationId } = useAuth();
+  const { user, organizationId, organizationName } = useAuth();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -218,8 +218,12 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+      {/* Header with Organization Name */}
+      <div className="space-y-1">
+        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+        {organizationName && (
+          <p className="text-muted-foreground">{organizationName}</p>
+        )}
         <p className="text-sm text-muted-foreground">Overview of your organization's submissions</p>
       </div>
 

@@ -11,6 +11,7 @@ export function useAuth() {
   // Phase 4: Organization Context
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [orgRole, setOrgRole] = useState<string | null>(null);
+  const [organizationName, setOrganizationName] = useState<string | null>(null);
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -49,6 +50,7 @@ export function useAuth() {
     setIsAdmin(false);
     setOrganizationId(null);
     setOrgRole(null);
+    setOrganizationName(null);
   };
 
   const checkUserRoles = async (userId: string) => {
@@ -77,7 +79,18 @@ export function useAuth() {
       setOrganizationId(currentOrgId || null);
 
       if (currentOrgId) {
-        // 3. Get Role in that Organization
+        // 3. Get Organization Name
+        const { data: orgData } = await (supabase as any)
+          .from('organizations')
+          .select('name')
+          .eq('id', currentOrgId)
+          .single();
+        
+        if (orgData) {
+          setOrganizationName(orgData.name);
+        }
+
+        // 4. Get Role in that Organization
         const { data: roleData } = await (supabase as any)
           .from('user_organization_roles')
           .select('role')
@@ -134,9 +147,17 @@ export function useAuth() {
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    resetRoles();
-    return { error };
+    try {
+      await supabase.auth.signOut();
+      localStorage.clear(); // Aggressively clear local storage to ensure session is gone
+      resetRoles();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    } finally {
+      // Force navigation to auth page with full reload
+      window.location.href = '/auth';
+    }
+    return { error: null };
   };
 
   const resetPassword = async (email: string) => {
@@ -161,6 +182,7 @@ export function useAuth() {
     isAdmin, // Legacy/Compat: True if Global Admin OR Org Manager
     organizationId,
     orgRole,
+    organizationName, // Organization name for display
     isManager: ['super_manager', 'manager'].includes(orgRole || ''),
     isStaff: orgRole === 'staff',
     signIn,

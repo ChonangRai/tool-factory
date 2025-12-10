@@ -91,6 +91,37 @@ export default function Auth() {
           }
         } else {
           toast.success('Signed in successfully');
+      
+          // Get current user
+          const { data: userData } = await supabase.auth.getUser();
+          if (!userData?.user) {
+            toast.error('Failed to get user information');
+            setLoading(false);
+            return;
+          }
+
+          // Check if user has an active organization
+          const { data: roles, error: rolesError } = await (supabase as any)
+            .from('user_organization_roles')
+            .select('status, organization_id')
+            .eq('user_id', userData.user.id)
+            .eq('status', 'active');
+
+          if (rolesError) {
+            console.error('Error checking organization:', rolesError);
+          }
+
+          if (!roles || roles.length === 0) {
+            // User has no active organization - block login
+            await supabase.auth.signOut();
+            toast.error('Your account is inactive or not associated with any workspace. Please contact your administrator.', {
+              duration: 6000,
+            });
+            setLoading(false);
+            return;
+          }
+
+          navigate('/dashboard');
         }
       } else {
         // Signup flow

@@ -79,6 +79,7 @@ interface OrganizationUser {
   id: string;
   user_id: string;
   role: string;
+  status?: string; // 'active' or 'inactive'
   created_at: string;
   profiles: {
     email: string;
@@ -115,7 +116,7 @@ export default function UserManagement() {
       // Get user organization roles
       const { data: roles, error: rolesError } = await (supabase as any)
         .from('user_organization_roles')
-        .select('id, user_id, role, created_at')
+        .select('id, user_id, role, status, created_at')
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: true });
 
@@ -274,6 +275,7 @@ export default function UserManagement() {
           role: 'staff', // Default role
           email: inviteEmail || null, // Optional email for targeted invites
           token: token,
+          created_by: currentUser?.id,
           expires_at: expiresAt.toISOString(),
         })
         .select('token')
@@ -355,19 +357,20 @@ export default function UserManagement() {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Joined</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {users.map((user) => (
-                  <TableRow key={user.id}>
+                  <TableRow key={user.id} className={user.status === 'inactive' ? 'opacity-60' : ''}>
                     <TableCell className="font-medium">
                       {user.profiles?.name || 'Unknown'}
                     </TableCell>
                     <TableCell>{user.profiles?.email}</TableCell>
                     <TableCell>
-                      {(orgRole === 'super_manager' || (orgRole === 'manager' && user.role === 'staff')) && user.user_id !== currentUser?.id ? (
+                      {(orgRole === 'super_manager' || (orgRole === 'manager' && user.role === 'staff')) && user.user_id !== currentUser?.id && user.status === 'active' ? (
                         <Select
                           value={user.role}
                           onValueChange={(value) => handleRoleChange(user.user_id, value)}
@@ -378,28 +381,52 @@ export default function UserManagement() {
                           </SelectTrigger>
                           <SelectContent>
                             {orgRole === 'super_manager' && (
-                              <SelectItem value="super_manager">
-                                <Badge variant="default">Super Manager</Badge>
-                              </SelectItem>
+                              <SelectItem value="super_manager">Super Manager</SelectItem>
                             )}
-                            <SelectItem value="manager">
-                              <Badge variant="secondary">Manager</Badge>
-                            </SelectItem>
-                            <SelectItem value="staff">
-                              <Badge variant="outline">Staff</Badge>
-                            </SelectItem>
+                            <SelectItem value="manager">Manager</SelectItem>
+                            <SelectItem value="staff">Staff</SelectItem>
                           </SelectContent>
                         </Select>
                       ) : (
                         <Badge variant={getRoleBadgeVariant(user.role)}>
-                          {user.role === 'super_manager' ? 'Super Manager' : user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                          {user.role.replace('_', ' ')}
                         </Badge>
                       )}
                     </TableCell>
+                    <TableCell>
+                      <Badge variant={user.status === 'active' ? 'default' : 'secondary'}>
+                        {user.status || 'active'}
+                      </Badge>
+                    </TableCell>
                     <TableCell>{format(new Date(user.created_at), 'MMM dd, yyyy')}</TableCell>
                     <TableCell className="text-right">
-                      {/* Only show remove button if user has permission */}
-                      {canRemoveUser(orgRole, user.role, user.user_id, currentUser?.id) && (
+                      {/* Show reactivate button for inactive users */}
+                      {user.status === 'inactive' && (orgRole === 'super_manager' || orgRole === 'manager') ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              const { error } = await (supabase as any)
+                                .from('user_organization_roles')
+                                .update({ status: 'active' })
+                                .eq('user_id', user.user_id)
+                                .eq('organization_id', organizationId);
+
+                              if (error) throw error;
+
+                              toast.success('User reactivated successfully');
+                              loadUsers();
+                            } catch (error: any) {
+                              toast.error('Failed to reactivate user: ' + error.message);
+                            }
+                          }}
+                          className="text-green-600 hover:text-green-700"
+                        >
+                          Reactivate
+                        </Button>
+                      ) : /* Only show remove button if user has permission and user is active */
+                      user.status === 'active' && canRemoveUser(orgRole, user.role, user.user_id, currentUser?.id) && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -439,26 +466,26 @@ export default function UserManagement() {
                 onClick={async () => {
                   if (!userToRemove) return;
                   try {
-                    // Deactivate: Just remove from organization
-                    const { error } = await supabase
+                    // Deactivate: Set status to inactive instead of deleting
+                    const { error } = await (supabase as any)
                       .from('user_organization_roles')
-                      .delete()
+                      .update({ status: 'inactive' })
                       .eq('user_id', userToRemove.userId)
                       .eq('organization_id', organizationId);
 
                     if (error) throw error;
 
-                    toast.success('User removed from workspace.');
+                    toast.success('User deactivated. They can be reactivated later.');
                     setShowRemovalDialog(false);
                     setUserToRemove(null);
                     loadUsers();
                   } catch (error: any) {
-                    toast.error('Failed to remove user: ' + error.message);
+                    toast.error('Failed to deactivate user: ' + error.message);
                   }
                 }}
               >
                 <UserMinus className="h-4 w-4 mr-2" />
-                Deactivate - Remove from workspace only (Recommended)
+                Deactivate - Set to inactive (Recommended)
               </Button>
               <Button
                 variant="destructive"
