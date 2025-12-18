@@ -129,13 +129,21 @@ export default function SubmitReceipt() {
 
       // Use Secure RPC to submit form and link files in one go
       // This bypasses RLS issues for public users
-      const { error: submissionError } = await (supabase as any).rpc('submit_form', {
+      const { data: submissionId, error: submissionError } = await (supabase as any).rpc('submit_form', {
         p_form_id: formId,
         p_data: formData,
         p_files: uploadedFiles
       });
 
       if (submissionError) throw submissionError;
+
+      // Trigger email notification (non-blocking)
+      // We pass the submission ID to the edge function
+      supabase.functions.invoke('submit-receipt', {
+        body: { submission_id: submissionId }
+      }).then(({ error }) => {
+        if (error) console.error('Failed to trigger email notification:', error);
+      });
 
       setSubmitted(true);
       toast.success('Submission successful!');
