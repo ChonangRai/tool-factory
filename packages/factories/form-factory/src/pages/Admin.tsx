@@ -171,9 +171,10 @@ export default function Admin() {
 
   const loadForms = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('forms')
         .select('*')
+        .eq('organization_id', organizationId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -186,9 +187,10 @@ export default function Admin() {
 
   const loadSubmissionCounts = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('submissions')
-        .select('form_id');
+        .select('form_id')
+        .eq('organization_id', organizationId);
 
       if (error) throw error;
 
@@ -204,14 +206,15 @@ export default function Admin() {
 
   const loadSubmissions = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('submissions')
         .select(`
           *,
           files (id, filename, path, mime),
           forms (name)
         `)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .eq('organization_id', organizationId);
 
       if (error) throw error;
 
@@ -225,9 +228,10 @@ export default function Admin() {
 
   const loadFolders = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('folders')
         .select('*')
+        .eq('organization_id', organizationId)
         .order('name', { ascending: true });
 
       if (error) throw error;

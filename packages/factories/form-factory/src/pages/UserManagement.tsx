@@ -284,8 +284,43 @@ export default function UserManagement() {
       if (error) throw error;
 
       const inviteLink = `${window.location.origin}/auth?mode=signup&token=${data.token}`;
+      
+      // If email provided, send invitation email via Edge Function
+      if (inviteEmail) {
+        // Fetch organization name
+        const { data: org } = await (supabase as any)
+          .from('organizations')
+          .select('name')
+          .eq('id', organizationId)
+          .single();
+
+        // Get inviter name
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('id', currentUser?.id)
+          .single();
+
+        const { error: funcError } = await supabase.functions.invoke('invite-user', {
+          body: {
+            email: inviteEmail,
+            invite_link: inviteLink,
+            organization_name: org?.name || 'ToolFactory',
+            inviter_name: profile?.name || 'A team member'
+          }
+        });
+
+        if (funcError) {
+          console.error('Failed to send invitation email:', funcError);
+          toast.warning('Invite link created but failed to send email. Link copied to clipboard.');
+        } else {
+          toast.success(`Invitation sent to ${inviteEmail}`);
+        }
+      } else {
+        toast.success('Secure invite link copied to clipboard');
+      }
+
       navigator.clipboard.writeText(inviteLink);
-      toast.success('Secure invite link copied to clipboard');
       setIsInviteDialogOpen(false);
       setInviteEmail(''); // Reset email field
     } catch (error: any) {
