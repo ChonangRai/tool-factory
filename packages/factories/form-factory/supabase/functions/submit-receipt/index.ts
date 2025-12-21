@@ -77,8 +77,10 @@ async function sendEmailNotifications(submission: any) {
       return;
     }
 
-    if (!submission.email) {
-      console.log('Submission has no email address, skipping notification');
+    const targetEmail = submission.email || submission.data?.email;
+
+    if (!targetEmail) {
+      console.log('Submission has no email address (checked standard column and data.email), skipping notification');
       return;
     }
 
@@ -107,7 +109,7 @@ async function sendEmailNotifications(submission: any) {
       },
       body: JSON.stringify({
         personalizations: [{
-          to: [{ email: submission.email }],
+          to: [{ email: targetEmail }],
           subject: `${formName} - Receipt Submission Confirmed`,
         }],
         from: { email: emailFrom },
