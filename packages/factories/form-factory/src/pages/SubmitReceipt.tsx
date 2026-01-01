@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardHeader, CardContent, CardTitle, CardDescription } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2, CheckCircle2, Receipt, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,6 +28,7 @@ export default function SubmitReceipt() {
   const [submitted, setSubmitted] = useState(false);
   const [form, setForm] = useState<any>(null);
   const [loadingForm, setLoadingForm] = useState(true);
+  const [sendReceipt, setSendReceipt] = useState(false); // Default false for opt-in
   const [formFields, setFormFields] = useState<FormField[]>([]);
   const [validatingImage, setValidatingImage] = useState(false);
   
@@ -137,13 +140,14 @@ export default function SubmitReceipt() {
 
       if (submissionError) throw submissionError;
 
-      // Trigger email notification (non-blocking)
-      // We pass the submission ID to the edge function
-      supabase.functions.invoke('submit-receipt', {
-        body: { submission_id: submissionId }
-      }).then(({ error }) => {
-        if (error) console.error('Failed to trigger email notification:', error);
-      });
+      // Trigger email notification (non-blocking) - IF OPTED IN
+      if (sendReceipt) {
+        supabase.functions.invoke('submit-receipt', {
+          body: { submission_id: submissionId }
+        }).then(({ error }) => {
+          if (error) console.error('Failed to trigger email notification:', error);
+        });
+      }
 
       setSubmitted(true);
       toast.success('Submission successful!');
@@ -255,11 +259,27 @@ export default function SubmitReceipt() {
           </Card>
         )}
 
-        <DynamicForm
-          fields={formFields}
-          onSubmit={handleSubmit}
-          isSubmitting={loading || validatingImage}
-        />
+        <div className="space-y-6">
+          <DynamicForm
+            fields={formFields}
+            onSubmit={handleSubmit}
+            isSubmitting={loading || validatingImage}
+          />
+          
+          <div className="flex items-center space-x-2 rounded-lg border p-4 bg-card/50">
+            <Checkbox 
+              id="send-receipt" 
+              checked={sendReceipt}
+              onCheckedChange={(checked) => setSendReceipt(checked as boolean)}
+            />
+            <Label 
+              htmlFor="send-receipt" 
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            >
+              Send me a confirmation email with my receipt
+            </Label>
+          </div>
+        </div>
 
         <AlertDialog open={showQualityWarning} onOpenChange={setShowQualityWarning}>
           <AlertDialogContent>

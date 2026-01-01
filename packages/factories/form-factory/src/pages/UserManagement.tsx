@@ -14,6 +14,7 @@ import {
   Trash2,
   Edit2,
   UserMinus,
+  Mail,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import {
@@ -87,9 +88,19 @@ interface OrganizationUser {
   };
 }
 
+interface Invite {
+  id: string;
+  email: string | null;
+  role: string;
+  token: string;
+  created_at: string;
+  expires_at: string;
+}
+
 export default function UserManagement() {
   const { organizationId, orgRole, user: currentUser } = useAuth();
   const [users, setUsers] = useState<OrganizationUser[]>([]);
+  const [invitations, setInvitations] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState<string | null>(null);
@@ -158,6 +169,21 @@ export default function UserManagement() {
 
       console.log('Loaded users:', combined); // Debug log
       setUsers(combined);
+
+      // Fetch pending invitations
+      const { data: invitationsData, error: invitationsError } = await (supabase as any)
+        .from('invitations')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .gt('expires_at', new Date().toISOString()) // Only valid invites
+        .order('created_at', { ascending: false });
+
+      if (invitationsError) {
+        console.error('Error loading invitations:', invitationsError);
+      } else {
+        setInvitations(invitationsData || []);
+      }
+
       setLoading(false);
     } catch (error: any) {
       console.error('Error loading users:', error);
@@ -329,6 +355,63 @@ export default function UserManagement() {
     }
   };
 
+  const handleResendInvite = async (invite: Invite) => {
+    if (!invite.email) {
+      toast.error('Cannot resend generic invite link via email');
+      return;
+    }
+
+    try {
+      // Fetch organization name
+      const { data: org } = await (supabase as any)
+        .from('organizations')
+        .select('name')
+        .eq('id', organizationId)
+        .single();
+
+      // Get inviter name
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq('id', currentUser?.id)
+        .single();
+
+      const inviteLink = `${window.location.origin}/auth?mode=signup&token=${invite.token}`;
+
+      const { error } = await supabase.functions.invoke('invite-user', {
+        body: {
+          email: invite.email,
+          invite_link: inviteLink,
+          organization_name: org?.name || 'ToolFactory',
+          inviter_name: profile?.name || 'A team member'
+        }
+      });
+
+      if (error) throw error;
+      toast.success(`Invitation resent to ${invite.email}`);
+    } catch (error: any) {
+      console.error('Error resending invitation:', error);
+      toast.error('Failed to resend invitation');
+    }
+  };
+
+  const handleCancelInvite = async (id: string) => {
+    try {
+      const { error } = await (supabase as any)
+        .from('invitations')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      toast.success('Invitation cancelled');
+      loadUsers(); // Reload to refresh list
+    } catch (error: any) {
+      console.error('Error cancelling invitation:', error);
+      toast.error('Failed to cancel invitation');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -376,6 +459,70 @@ export default function UserManagement() {
           </DialogContent>
         </Dialog>
       </div>
+
+      { invitations.length > 0 && (
+        <Card className="mb-8 border-yellow-200 bg-yellow-50/50 dark:border-yellow-900/50 dark:bg-yellow-900/10">
+          <CardHeader>
+            <CardTitle className="text-lg text-yellow-800 dark:text-yellow-200">Pending Invitations</CardTitle>
+            <CardDescription>Users who have been invited but haven't joined yet.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email / Token</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invitations.map((invite) => (
+                  <TableRow key={invite.id}>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-foreground">{invite.email || 'Generic Link'}</span>
+                        <span className="text-xs text-muted-foreground font-mono truncate max-w-[200px]">{invite.token}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">
+                        {invite.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(invite.expires_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        {invite.email && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleResendInvite(invite)}
+                            title="Resend Email"
+                          >
+                            <Mail className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleCancelInvite(invite.id)}
+                          title="Cancel Invite"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
