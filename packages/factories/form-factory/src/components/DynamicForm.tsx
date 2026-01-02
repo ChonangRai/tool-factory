@@ -9,9 +9,10 @@ interface DynamicFormProps {
   onSubmit: (data: Record<string, any>) => void;
   isSubmitting?: boolean;
   initialValues?: Record<string, any>;
+  children?: React.ReactNode;
 }
 
-export function DynamicForm({ fields, onSubmit, isSubmitting = false, initialValues }: DynamicFormProps) {
+export function DynamicForm({ fields, onSubmit, isSubmitting = false, initialValues, children }: DynamicFormProps) {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -89,6 +90,8 @@ export function DynamicForm({ fields, onSubmit, isSubmitting = false, initialVal
               error={errors[field.id]}
             />
           ))}
+          {/* Render passed children (like additional options) inside the card context */}
+          {children && <div className="pt-4 border-t mt-4">{children}</div>}
         </CardContent>
       </Card>
 

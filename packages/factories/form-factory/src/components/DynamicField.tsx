@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { FormField } from '@/types/formFields';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -95,13 +96,49 @@ export function DynamicField({ field, value, onChange, error }: DynamicFieldProp
         );
 
       case 'file':
+        const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+        // Cleanup preview URL on unmount or change
+        useEffect(() => {
+          return () => {
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+          };
+        }, [previewUrl]);
+
+        const handleFileChange = (file: File | undefined) => {
+          onChange(file);
+          
+          if (file && file.type.startsWith('image/')) {
+            const url = URL.createObjectURL(file);
+            setPreviewUrl(url);
+          } else {
+            setPreviewUrl(null);
+          }
+        };
+
         return (
-          <Input
-            type="file"
-            onChange={(e) => onChange(e.target.files?.[0])}
-            required={field.required}
-            accept="image/*"
-          />
+          <div className="space-y-4">
+            {previewUrl && (
+              <div className="relative rounded-lg overflow-hidden border w-full max-w-sm mx-auto">
+                <img 
+                  src={previewUrl} 
+                  alt="Preview" 
+                  className="w-full h-auto object-contain bg-muted/20"
+                />
+              </div>
+            )}
+            <Input
+              type="file"
+              onChange={(e) => handleFileChange(e.target.files?.[0])}
+              required={field.required}
+              accept="image/*,application/pdf"
+            />
+            {value && !previewUrl && (
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <span className="font-medium">Selected:</span> {value.name}
+              </p>
+            )}
+          </div>
         );
 
       default:

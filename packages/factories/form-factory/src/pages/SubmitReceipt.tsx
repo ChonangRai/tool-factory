@@ -264,21 +264,21 @@ export default function SubmitReceipt() {
             fields={formFields}
             onSubmit={handleSubmit}
             isSubmitting={loading || validatingImage}
-          />
-          
-          <div className="flex items-center space-x-2 rounded-lg border p-4 bg-card/50">
-            <Checkbox 
-              id="send-receipt" 
-              checked={sendReceipt}
-              onCheckedChange={(checked) => setSendReceipt(checked as boolean)}
-            />
-            <Label 
-              htmlFor="send-receipt" 
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-            >
-              Send me a confirmation email with my receipt
-            </Label>
-          </div>
+          >
+            <div className="flex items-center space-x-2 p-2">
+              <Checkbox 
+                id="send-receipt" 
+                checked={sendReceipt}
+                onCheckedChange={(checked) => setSendReceipt(checked as boolean)}
+              />
+              <Label 
+                htmlFor="send-receipt" 
+                className="text-sm font-medium leading-none cursor-pointer"
+              >
+                Send me a confirmation email with my receipt
+              </Label>
+            </div>
+          </DynamicForm>
         </div>
 
         <AlertDialog open={showQualityWarning} onOpenChange={setShowQualityWarning}>
