@@ -130,11 +130,39 @@ export default function SubmitReceipt() {
         }
       }
 
+      // Prepare data for RPC
+      // The RPC expects specific keys (email, name, etc.) to populate columns.
+      // We map our dynamic fields to these keys based on field types/names.
+      const rpcData: Record<string, any> = { ...formData };
+      
+      // smart mapping
+      const emailField = formFields.find(f => f.type === 'email');
+      if (emailField && formData[emailField.id]) {
+        rpcData.email = formData[emailField.id];
+      }
+
+      const phoneField = formFields.find(f => f.type === 'phone');
+      if (phoneField && formData[phoneField.id]) {
+        rpcData.contact_number = formData[phoneField.id];
+      }
+
+      // Try to find reasonable defaults for name/description if not explicit
+      // (This helps populate the summary columns in the dashboard)
+      if (!rpcData.name) {
+        const nameField = formFields.find(f => f.type === 'text' && f.label.toLowerCase().includes('name'));
+        if (nameField) rpcData.name = formData[nameField.id];
+      }
+
+      if (!rpcData.description) {
+         const descField = formFields.find(f => f.type === 'textarea');
+         if (descField) rpcData.description = formData[descField.id];
+      }
+
       // Use Secure RPC to submit form and link files in one go
       // This bypasses RLS issues for public users
       const { data: submissionId, error: submissionError } = await (supabase as any).rpc('submit_form', {
         p_form_id: formId,
-        p_data: formData,
+        p_data: rpcData,
         p_files: uploadedFiles
       });
 
