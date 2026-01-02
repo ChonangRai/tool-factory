@@ -30,12 +30,12 @@ serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Fetch submission details
+    // Fetch submission details AND form settings
     const { data: submission, error: submissionError } = await supabase
       .from('submissions')
       .select(`
         *,
-        forms (name)
+        forms (name, settings)
       `)
       .eq('id', submission_id)
       .single();
@@ -44,8 +44,7 @@ serve(async (req: Request) => {
       throw new Error('Submission not found');
     }
 
-    // Send email notifications
-    console.log(`Sending email for submission: ${submission.id} to ${submission.email}`);
+    console.log(`Sending email for submission: ${submission.id}`);
     await sendEmailNotifications(submission);
 
     return new Response(
@@ -73,29 +72,51 @@ async function sendEmailNotifications(submission: any) {
     const emailFrom = Deno.env.get('EMAIL_FROM');
 
     if (!sendgridApiKey || !emailFrom) {
-      console.log('Email configuration missing (SENDGRID_API_KEY or EMAIL_FROM), skipping notifications');
+      console.log('Email configuration missing, skipping notifications');
       return;
     }
 
     const targetEmail = submission.email || submission.data?.email;
 
     if (!targetEmail) {
-      console.log('Submission has no email address (checked standard column and data.email), skipping notification');
+      console.log('Submission has no email address, skipping notification');
       return;
     }
 
     const formName = submission.forms?.name || 'Form Submission';
-    const amountDisplay = submission.amount ? `$${submission.amount}` : 'N/A';
-    const dateDisplay = submission.date || new Date(submission.created_at).toLocaleDateString();
+    const formFields = submission.forms?.settings?.fields || [];
+    
+    // Create map of field IDs to Labels
+    const fieldMap = new Map(formFields.map((f: any) => [f.id, f.label]));
+    
+    // Generate dynamic list of fields
+    let fieldsHtml = '';
+    const submissionData = submission.data || {};
+
+    // Iterate through form fields to maintain order
+    formFields.forEach((field: any) => {
+      // Skip files (handled separately if needed) and undefined values
+      if (field.type === 'file') return;
+      
+      const value = submissionData[field.id];
+      if (value !== undefined && value !== null && value !== '') {
+         fieldsHtml += `<li><strong>${field.label}:</strong> ${value}</li>`;
+      }
+    });
+
+    // Fallback: if no fields found via map (e.g. old form), try compatible keys or just data
+    if (!fieldsHtml) {
+       if (submission.amount) fieldsHtml += `<li><strong>Amount:</strong> ${submission.amount}</li>`;
+       if (submission.description) fieldsHtml += `<li><strong>Description:</strong> ${submission.description}</li>`;
+    }
 
     const emailContent = `
       <h1>${formName} - Receipt Confirmed</h1>
       <p>Thank you for your submission. Here are the details we received:</p>
       <ul>
+        ${fieldsHtml}
         <li><strong>Submission ID:</strong> ${submission.id}</li>
-        <li><strong>Amount:</strong> ${amountDisplay}</li>
-        <li><strong>Date:</strong> ${dateDisplay}</li>
-        <li><strong>Description:</strong> ${submission.description || 'N/A'}</li>
+        <li><strong>Date:</strong> ${new Date(submission.created_at).toLocaleDateString()}</li>
       </ul>
       <p>Your submission is now under review.</p>
     `;
@@ -125,9 +146,9 @@ async function sendEmailNotifications(submission: any) {
       throw new Error(`SendGrid API Error: ${errorText}`);
     }
 
-    console.log('Email sent successfully via SendGrid');
+    console.log('Email sent successfully');
   } catch (error) {
     console.error('Failed to send email:', error);
-    throw error; // Re-throw to be caught by the main handler
+    throw error;
   }
 }
