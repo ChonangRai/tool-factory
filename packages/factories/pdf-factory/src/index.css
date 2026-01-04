@@ -1,0 +1,213 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ToolFactory Design System - Industrial Modern */
+
+@layer base {
+  :root {
+    /* Factory Neutrals */
+    --background: 210 20% 98%;
+    --foreground: 220 25% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 25% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 25% 10%;
+
+    /* Factory Primary - Industrial Teal */
+    --primary: 173 58% 39%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Warm Gray */
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 25% 25%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 10% 46%;
+
+    /* Accent - Highlight Blue */
+    --accent: 200 95% 48%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 173 58% 39%;
+
+    --radius: 0.75rem;
+
+    /* Factory-specific tokens */
+    --factory-surface: 220 20% 97%;
+    --factory-border-dashed: 220 13% 85%;
+    --factory-shadow: 220 25% 10%;
+    --factory-drag-active: 173 58% 39%;
+    --factory-card-hover: 220 20% 99%;
+    
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(var(--factory-shadow) / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(var(--factory-shadow) / 0.07), 0 2px 4px -2px hsl(var(--factory-shadow) / 0.05);
+    --shadow-lg: 0 10px 15px -3px hsl(var(--factory-shadow) / 0.08), 0 4px 6px -4px hsl(var(--factory-shadow) / 0.05);
+    --shadow-xl: 0 20px 25px -5px hsl(var(--factory-shadow) / 0.1), 0 8px 10px -6px hsl(var(--factory-shadow) / 0.05);
+    --shadow-elevated: 0 25px 50px -12px hsl(var(--factory-shadow) / 0.15);
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 220 25% 8%;
+    --foreground: 210 20% 98%;
+
+    --card: 220 25% 12%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 220 25% 12%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 173 58% 45%;
+    --primary-foreground: 220 25% 10%;
+
+    --secondary: 220 20% 18%;
+    --secondary-foreground: 210 20% 90%;
+
+    --muted: 220 20% 18%;
+    --muted-foreground: 220 10% 60%;
+
+    --accent: 200 95% 55%;
+    --accent-foreground: 220 25% 10%;
+
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 20% 20%;
+    --input: 220 20% 20%;
+    --ring: 173 58% 45%;
+
+    --factory-surface: 220 25% 10%;
+    --factory-border-dashed: 220 20% 25%;
+    --factory-drag-active: 173 58% 45%;
+    --factory-card-hover: 220 25% 14%;
+
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  /* Factory Upload Zone */
+  .factory-upload-zone {
+    @apply relative rounded-xl border-2 border-dashed transition-all duration-300 ease-out;
+    border-color: hsl(var(--factory-border-dashed));
+    background: hsl(var(--factory-surface));
+  }
+
+  .factory-upload-zone:hover {
+    border-color: hsl(var(--primary) / 0.5);
+    background: hsl(var(--primary) / 0.03);
+  }
+
+  .factory-upload-zone.drag-active {
+    border-color: hsl(var(--factory-drag-active));
+    background: hsl(var(--primary) / 0.08);
+    transform: scale(1.01);
+    box-shadow: var(--shadow-lg), 0 0 0 4px hsl(var(--primary) / 0.1);
+  }
+
+  /* Factory Card */
+  .factory-card {
+    @apply relative rounded-xl bg-card transition-all duration-200 ease-out overflow-hidden;
+    box-shadow: var(--shadow-md);
+  }
+
+  .factory-card:hover {
+    box-shadow: var(--shadow-lg);
+    background: hsl(var(--factory-card-hover));
+  }
+
+  .factory-card.dragging {
+    transform: scale(1.05) rotate(2deg);
+    box-shadow: var(--shadow-elevated);
+    z-index: 50;
+  }
+
+  /* Factory Button */
+  .factory-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-6 py-3 font-medium transition-all duration-200;
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    box-shadow: var(--shadow-md), 0 1px 0 0 hsl(var(--primary) / 0.2) inset;
+  }
+
+  .factory-btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg), 0 1px 0 0 hsl(var(--primary) / 0.2) inset;
+    filter: brightness(1.05);
+  }
+
+  .factory-btn-primary:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Factory Icon Button */
+  .factory-icon-btn {
+    @apply flex items-center justify-center rounded-lg p-2 transition-all duration-150;
+    background: hsl(var(--background) / 0.9);
+    color: hsl(var(--muted-foreground));
+  }
+
+  .factory-icon-btn:hover {
+    background: hsl(var(--secondary));
+    color: hsl(var(--foreground));
+  }
+
+  .factory-icon-btn.destructive:hover {
+    background: hsl(var(--destructive) / 0.1);
+    color: hsl(var(--destructive));
+  }
+}
+
+@layer utilities {
+  .factory-shadow-sm {
+    box-shadow: var(--shadow-sm);
+  }
+  .factory-shadow-md {
+    box-shadow: var(--shadow-md);
+  }
+  .factory-shadow-lg {
+    box-shadow: var(--shadow-lg);
+  }
+  .factory-shadow-xl {
+    box-shadow: var(--shadow-xl);
+  }
+  .factory-shadow-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+}
