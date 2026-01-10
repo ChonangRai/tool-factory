@@ -5,12 +5,14 @@
   "main": "index.js",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "packages/factories/*"
   ],
   "scripts": {
     "dev": "cd packages/homepage && npm run dev",
     "dev:home": "cd packages/homepage && npm run dev",
     "dev:form": "cd packages/factories/form-factory && npm run dev",
+    "dev:pdf": "cd packages/factories/pdf-factory && npm run dev",
     "build": "npm run build --workspaces",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

@@ -211,25 +211,32 @@ otp_length = 6
 otp_expiry = 3600
 
 # Use a production-ready SMTP server
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+[auth.email.smtp]
+enabled = true
+host = "smtp.sendgrid.net"
+port = 587
+user = "apikey"
+pass = "env(SENDGRID_API_KEY)"
+admin_email = "no-reply@toolfactory.uk"
+sender_name = "ToolFactory"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
-# subject = "You have been invited"
-# content_path = "./supabase/templates/invite.html"
+# subject = "You have been invited to ToolFactory"
+# content_path = "./templates/invite.html"
 
-# Uncomment to customize notification email template
+# [auth.email.template.confirmation]
+# subject = "Confirm your ToolFactory account"
+# content_path = "./templates/confirmation.html"
+
+# [auth.email.template.recovery]
+# subject = "Reset your ToolFactory password"
+# content_path = "./templates/recovery.html"
+
 # [auth.email.notification.password_changed]
 # enabled = true
-# subject = "Your password has been changed"
-# content_path = "./templates/password_changed_notification.html"
+# subject = "Your ToolFactory password has been changed"
+# content_path = "./templates/password_changed.html"
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.

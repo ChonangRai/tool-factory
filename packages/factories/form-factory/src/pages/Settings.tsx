@@ -31,12 +31,17 @@ export default function Settings() {
       // Load profile
       const { data: profile } = await supabase
         .from('profiles')
-        .select('name')
+        .select('name, preferences')
         .eq('id', user.id)
         .single();
 
       if (profile) {
-        setProfileName(profile.name || '');
+        setProfileName((profile as any).name || '');
+        // Load preferences if they exist
+        const prefs = (profile as any).preferences;
+        if (prefs && prefs.email_notifications !== undefined) {
+          setEmailNotifications(prefs.email_notifications);
+        }
       }
 
       // Load organization (if manager)
@@ -64,7 +69,12 @@ export default function Settings() {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ name: profileName })
+        .update({ 
+          name: profileName,
+          preferences: {
+            email_notifications: emailNotifications
+          }
+        })
         .eq('id', user.id);
 
       if (error) throw error;
@@ -313,8 +323,15 @@ export default function Settings() {
 
               <div className="rounded-lg border border-muted bg-muted/50 p-4">
                 <p className="text-sm text-muted-foreground">
-                  <strong>Note:</strong> Email notification preferences will be saved to your profile settings in a future update.
+                  <strong>Note:</strong> Some notification types may not be fully configurable yet.
                 </p>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button onClick={handleSaveProfile} disabled={loading}>
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Preferences
+                </Button>
               </div>
             </CardContent>
           </Card>

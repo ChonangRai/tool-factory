@@ -15,7 +15,8 @@ const factories: Factory[] = [
     name: "PDF Factory",
     description: "Merge, split, compress, and convert PDF documents with powerful batch processing capabilities.",
     icon: FileText,
-    status: "coming-soon",
+    status: "available",
+    url: "https://pdfs.toolfactory.uk",
   },
   {
     id: "image-factory",
