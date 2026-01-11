@@ -41,7 +41,6 @@ const UploadZone = ({ onUpload, children, hasFiles }: UploadZoneProps) => {
         </div>
       ) : (
         <div 
-          onClick={open}
           className="flex flex-col items-center justify-center gap-4 text-center w-full"
         >
           {/* Icon Container */}

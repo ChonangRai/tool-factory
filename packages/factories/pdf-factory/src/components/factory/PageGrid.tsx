@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import PageCard from './PageCard';
+import { Plus } from 'lucide-react';
 
 interface Page {
   id: string;
@@ -14,9 +15,10 @@ interface PageGridProps {
   onRotate: (id: string) => void;
   onRemove: (id: string) => void;
   onEdit: (id: string) => void;
+  onAdd?: () => void;
 }
 
-const PageGrid = ({ pages, onReorder, onRotate, onRemove, onEdit }: PageGridProps) => {
+const PageGrid = ({ pages, onReorder, onRotate, onRemove, onEdit, onAdd }: PageGridProps) => {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
@@ -63,10 +65,6 @@ const PageGrid = ({ pages, onReorder, onRotate, onRemove, onEdit }: PageGridProp
     setDragOverId(null);
   };
 
-  if (pages.length === 0) {
-    return null;
-  }
-
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {pages.map((page) => (
@@ -93,6 +91,18 @@ const PageGrid = ({ pages, onReorder, onRotate, onRemove, onEdit }: PageGridProp
           />
         </div>
       ))}
+
+      {onAdd && (
+        <div
+          onClick={onAdd}
+          className="factory-card aspect-[3/4] flex flex-col items-center justify-center gap-3 border-2 border-dashed border-muted-foreground/25 bg-muted/50 text-muted-foreground transition-all hover:bg-muted hover:border-primary/50 hover:text-primary cursor-pointer"
+        >
+          <div className="h-12 w-12 rounded-full bg-background flex items-center justify-center shadow-sm">
+            <Plus className="h-6 w-6" />
+          </div>
+          <span className="font-medium">Add more PDFs</span>
+        </div>
+      )}
     </div>
   );
 };

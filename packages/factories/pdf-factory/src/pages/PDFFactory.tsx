@@ -3,10 +3,12 @@ import { usePDF, PDFPageItem } from '@/hooks/usePDF';
 import Header from '@/components/factory/Header';
 import UploadZone from '@/components/factory/UploadZone';
 import PageGrid from '@/components/factory/PageGrid';
+import PageCard from '@/components/factory/PageCard'; // Added import
 import EmptyState from '@/components/factory/EmptyState';
 import { toast } from '@/hooks/use-toast';
-import { Download, Plus } from 'lucide-react';
+import { Download } from 'lucide-react';
 import PDFEditor from '@/components/factory/PDFEditor';
+import PDFPageEditor from '@/components/factory/PDFPageEditor'; // Added import
 
 const Index = () => {
   const [pdfItems, setPdfItems] = useState<PDFPageItem[]>([]);
@@ -32,17 +34,10 @@ const Index = () => {
       // Create a map for O(1) lookup
       const itemMap = new Map(prevItems.map(item => [item.id, item]));
       
-      // Reconstruct the ordered list using the IDs from newItems
-      // Filter out any items that might not exist (though shouldn't happen)
       const reordered = newItems
         .map(uiItem => {
           const original = itemMap.get(uiItem.id);
           if (original) {
-            // Preserve the latest rotation from UI if PageGrid modified it (though it calls onRotate separately)
-            // PageGrid DOES return rotation, but we handle rotation via onRotate. 
-            // So we just take the file and id from original, and maybe rotation?
-            // Actually PageGrid implementation passes rotation state back in onReorder if it changed it? 
-            // No, PageGrid only reorders. Rotation is separate event.
             return original;
           }
           return null;
@@ -128,7 +123,6 @@ const Index = () => {
     for (const item of pdfItems) {
       const blobs = await splitPDF(item.file);
       blobs.forEach((blob, index) => {
-        // Create new File object for each page
         const newFile = new File([blob], `${item.file.name.replace('.pdf', '')}-page-${index + 1}.pdf`, {
           type: 'application/pdf'
         });
@@ -136,11 +130,7 @@ const Index = () => {
         newItems.push({
           id: `${newFile.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           file: newFile,
-          rotation: 0 // Reset rotation as per extracted page (or preserve if needed, but extraction likely resets it unless we bake it in)
-          // Note: pdf-lib copyPages usually preserves rotation if we don't override it. 
-          // But our item.rotation tracks *added* rotation. 
-          // If we extract, we probably start fresh unless we want to "apply" the rotation during extraction?
-          // For now, simple extraction.
+          rotation: 0
         });
       });
     }
@@ -148,91 +138,43 @@ const Index = () => {
     setPdfItems(newItems);
     toast({
       title: "Pages Extracted",
-      description: `You now have ${newItems.length} individual pages to edit.`
+      description: "All pages have been separated."
     });
   }, [pdfItems, splitPDF]);
-
-  const handleReset = useCallback(() => {
-    setPdfItems([]);
-    toast({
-      title: "Factory reset",
-      description: "All files have been cleared",
-    });
-  }, []);
 
   const handleDownloadZip = useCallback(async () => {
     if (pdfItems.length === 0) return;
     
-    toast({
-      title: "Zipping files...",
-      description: `Compressing ${pdfItems.length} pages.`
-    });
-
     try {
-      // Dynamic import to keep bundle size optimized if possible, or just standard import
+      // Dynamic import
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
-
-      // If we have rotation applied in UI (item.rotation), we should apply it before zipping?
-      // Currently mergePDFs applies it. 
-      // If we download individually (ZIP), the files are the RAW files (unless we extracted them, which are also raw).
-      // If the user rotated a page in the UI, that metadata is in `item.rotation`.
-      // The `item.file` is the original (or extracted) file WITHOUT rotation applied.
-      // To export WITH rotation, we need to process them.
-      // We can use usePDF's mergePDFs logic but for single files? Or just re-process.
       
-      // For V1 "Download ZIP", let's assume we want to preserve the edits (Rotation).
-      // So we should probably process each item through pdf-lib to apply rotation if needed.
-      // Or just zip raw files if rotation is 0. 
-
-      // Let's reuse mergePDFs logic but returning array of blobs? 
-      // Or simply: 
-      // For each item:
-      //   Load doc, rotate page, save.
-      //   Add to zip.
+      pdfItems.forEach((item, index) => {
+        zip.file(item.file.name || `doc-${index}.pdf`, item.file);
+      });
       
-      // Let's do a lightweight accumulation.
-      const { PDFDocument, degrees } = await import('pdf-lib');
-      
-      for (const item of pdfItems) {
-        let fileData = await item.file.arrayBuffer();
-        
-        if (item.rotation !== 0) {
-           const pdf = await PDFDocument.load(fileData);
-           const pages = pdf.getPages();
-           pages.forEach(p => {
-             const current = p.getRotation().angle;
-             p.setRotation(degrees(current + item.rotation));
-           });
-           const modifiedBytes = await pdf.save();
-           fileData = modifiedBytes.buffer as ArrayBuffer;
-        }
-
-        zip.file(item.file.name, fileData);
-      }
-
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(zipBlob);
+      const content = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(content);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `pdf-factory-files-${Date.now()}.zip`;
+      link.download = `pdf-factory-batch-${Date.now()}.zip`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
-      URL.revokeObjectURL(url);
-      
       toast({
-        title: "Success",
-        description: "Files zipped and downloaded!",
+        title: "ZIP Downloaded",
+        description: `Compressed ${pdfItems.length} files.`
       });
+      
     } catch (e) {
       console.error(e);
       toast({
-        title: "Error",
-        description: "Failed to zip files",
-        variant: "destructive",
+        title: "Error creating ZIP",
+        description: "Could not compress files.",
+        variant: "destructive"
       });
     }
   }, [pdfItems]);
@@ -242,92 +184,162 @@ const Index = () => {
     id: item.id,
     pageNumber: index + 1,
     rotation: item.rotation,
-    fileName: item.file.name,
-    file: item.file // Pass actual file for preview generation
+    file: item.file
   }));
 
+  const [viewMode, setViewMode] = useState<'grid' | 'split'>('grid');
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+
+  const handleSplitMode = async () => {
+    if (pdfItems.length === 0) return;
+    
+    // Auto-extract pages if we have any multi-page docs or just to ensure uniform tokenization
+    // Actually, user might just want to rearrange existing "page items" if they are already single pages.
+    // But "Split" implies breaking them down.
+    await handleExtractPages();
+    
+    setViewMode('split');
+  };
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex h-screen flex-col bg-background">
       <Header />
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Upload Zone & Grid Combined */}
-        <section className="pb-24">
-          <UploadZone onUpload={handleUpload} hasFiles={pdfItems.length > 0}>
-            {({ open }) => (
-              <>
-                {pdfItems.length > 0 && (
-                  <>
-                    <div className="mb-6 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <h2 className="text-lg font-medium text-foreground">Assembly Line</h2>
-                        <span className="text-sm text-muted-foreground border-l pl-4 border-border">
-                          {pdfItems.length} {pdfItems.length === 1 ? 'file' : 'files'}
-                        </span>
-                      </div>
-                      
-                      {/* Add More Button (Moved to Header) */}
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          open();
-                        }}
-                        className="flex items-center gap-2 rounded-md bg-secondary px-3 py-1.5 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 transition-colors"
-                      >
-                         <Plus className="h-4 w-4" />
-                         Add more PDFs
-                      </button>
-                    </div>
-                    
-                    <PageGrid
-                      pages={uiPages}
-                      onReorder={() => {}} 
-                      onRotate={handleRotate}
-                      onRemove={handleRemove}
-                      onEdit={handleEdit}
-                    />
+      <main className="flex-1 overflow-hidden">
+        {viewMode === 'grid' ? (
+             /* Standard Grid Layout */
+             <div className="h-full overflow-y-auto px-4 py-8 sm:px-6 lg:px-8">
+                <UploadZone onUpload={handleUpload} hasFiles={pdfItems.length > 0}>
+                    {({ open }) => (
+                    <>
+                        {pdfItems.length > 0 ? (
+                        <div className="mx-auto max-w-7xl">
+                            <div className="mb-6 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <h2 className="text-lg font-medium text-foreground">Assembly Line</h2>
+                                <span className="text-sm text-muted-foreground border-l pl-4 border-border">
+                                {pdfItems.length} {pdfItems.length === 1 ? 'file' : 'files'}
+                                </span>
+                            </div>
+                            </div>
+                            
+                            <PageGrid 
+                            pages={uiPages} 
+                            onReorder={handleReorder}
+                            onRotate={handleRotate}
+                            onRemove={handleRemove}
+                            onEdit={handleEdit}
+                            onAdd={open}
+                            />
 
-                    {/* Action Buttons (Moved to Bottom) */}
-                    <div className="flex justify-end gap-3 pt-8 border-t border-dashed border-border mt-8">
-                      <button
-                        onClick={handleExtractPages}
-                        className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
-                      >
-                       <div className="flex items-center gap-2">
-                          <Plus className="h-4 w-4 rotate-45" /> {/* Makeshift Split Icon or use different icon */}
-                          <span>Extract Pages</span>
+                            {/* Action Buttons */}
+                            <div className="flex justify-end items-center mt-8 pt-8 border-t border-dashed border-border gap-4">
+                                <button
+                                    onClick={handleSplitMode}
+                                    className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-foreground border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                                >
+                                    <div className="flex gap-0.5">
+                                        <div className="h-3 w-2 border border-current rounded-[1px]" />
+                                        <div className="h-3 w-2 border border-current rounded-[1px]" />
+                                    </div>
+                                    <span>Split & Rearrange</span>
+                                </button>
+
+                                {pdfItems.length >= 2 && (
+                                    <button
+                                    onClick={handleExport}
+                                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+                                    >
+                                    <Download className="h-4 w-4" />
+                                    <span>Merge & Export</span>
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                      </button>
-
-                      {pdfItems.length > 0 && (
-                        <button
-                          onClick={handleDownloadZip}
-                          className="flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-foreground hover:bg-secondary transition-colors"
-                        >
-                          <Download className="h-4 w-4" />
-                          <span>Download ZIP</span>
-                        </button>
-                      )}
-
-                      {pdfItems.length >= 2 && (
-                        <button
-                          onClick={handleExport}
-                          className="factory-btn-primary"
-                        >
-                          <Download className="h-4 w-4" />
-                          <span>Merge & Export</span>
-                        </button>
-                      )}
+                        ) : (
+                        <EmptyState />
+                        )}
+                    </>
+                    )}
+                </UploadZone>
+             </div>
+        ) : (
+            /* Split & Rearrange View */
+            <div className="flex h-full">
+                {/* Sidebar */}
+                <div className="w-64 border-r border-border bg-muted/10 flex flex-col">
+                    <div className="p-4 border-b border-border bg-background">
+                         <h3 className="font-medium text-sm">Pages</h3>
+                         <p className="text-xs text-muted-foreground">{pdfItems.length} pages</p>
                     </div>
-                  </>
-                )}
-              </>
-            )}
-          </UploadZone>
-        </section>
+                    <div className="flex-1 overflow-y-auto p-4">
+                        <div className="space-y-3">
+                             {/* We can reuse the sortable PageGrid but force 1 column */}
+                             {/* Actually, PageGrid hardcodes grid classes. Let's make a mini wrapper or just style render */}
+                             <div className="grid grid-cols-1 gap-3">
+                                {uiPages.map(page => (
+                                    <div 
+                                      key={page.id} 
+                                      onClick={() => setSelectedPageId(page.id)}
+                                      className={`relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${selectedPageId === page.id ? 'border-primary ring-2 ring-primary/20' : 'border-transparent hover:border-primary/50'}`}
+                                    >
+                                        <div className="pointer-events-none">
+                                           {/* Reuse PageCard but static/mini */}
+                                            <PageCard
+                                                pageNumber={page.pageNumber}
+                                                rotation={page.rotation}
+                                                file={page.file}
+                                                onRotate={() => {}}
+                                                onRemove={() => {}}
+                                                onEdit={() => {}}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                             </div>
+                        </div>
+                    </div>
+                    <div className="p-4 border-t border-border bg-background">
+                        <button
+                           onClick={() => setViewMode('grid')}
+                           className="w-full justify-center flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground bg-secondary hover:bg-secondary/80 transition-colors"
+                        >
+                            Back to Grid
+                        </button>
+                    </div>
+                </div>
+                
+                {/* Main Editor */}
+                <div className="flex-1 bg-background relative flex flex-col">
+                    {selectedPageId ? (
+                        <PDFPageEditor 
+                          file={pdfItems.find(i => i.id === selectedPageId)?.file || null}
+                          onSave={handleSaveEdit}
+                          onRotate={() => handleRotate(selectedPageId)}
+                          onDelete={() => {
+                              handleRemove(selectedPageId);
+                              setSelectedPageId(null);
+                          }}
+                          className="h-full"
+                        />
+                    ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center bg-muted/10">
+                            <div className="h-16 w-16 mb-4 rounded-2xl bg-muted flex items-center justify-center">
+                                <div className="flex gap-1">
+                                    <div className="h-6 w-4 border-2 border-current rounded-sm" />
+                                    <div className="h-6 w-4 border-2 border-dashed border-current rounded-sm" />
+                                </div>
+                            </div>
+                            <h3 className="font-medium text-lg text-foreground">Select a page</h3>
+                            <p>Click a page from the sidebar to edit, rotate, or delete it.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
       </main>
 
+      {/* Legacy Modal (kept just in case logic needs it, but mostly unused in Split mode) */}
       <PDFEditor 
         isOpen={!!editingItemId}
         onClose={() => setEditingItemId(null)}
