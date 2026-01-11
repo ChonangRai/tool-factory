@@ -3,7 +3,7 @@ import { usePDF, PDFPageItem } from '@/hooks/usePDF';
 import Header from '@/components/factory/Header';
 import UploadZone from '@/components/factory/UploadZone';
 import PageGrid from '@/components/factory/PageGrid';
-import PageCard from '@/components/factory/PageCard'; // Added import
+import PageCard from '@/components/factory/PageCard';
 import EmptyState from '@/components/factory/EmptyState';
 import { toast } from '@/hooks/use-toast';
 import { Download } from 'lucide-react';
@@ -103,52 +103,7 @@ const Index = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-import SidebarList from '@/components/factory/SidebarList';
-
-// ... (inside component)
-
-// Fix filename in handleExport
       link.download = `pdf-factory-${Date.now()}.pdf`;
-
-// ... (in render)
-
-        ) : (
-            /* Split & Rearrange View */
-            <div className="flex h-full">
-                {/* Sidebar */}
-                <div className="w-64 border-r border-border bg-muted/10 flex flex-col">
-                    <div className="p-4 border-b border-border bg-background">
-                         <h3 className="font-medium text-sm">Pages</h3>
-                         <p className="text-xs text-muted-foreground">{pdfItems.length} pages</p>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4">
-                        <SidebarList 
-                            pages={uiPages}
-                            selectedId={selectedPageId}
-                            onSelect={setSelectedPageId}
-                            onReorder={handleReorder}
-                        />
-                    </div>
-                    <div className="p-4 border-t border-border bg-background space-y-2">
-                        {pdfItems.length >= 2 && (
-                            <button
-                                onClick={handleExport}
-                                className="w-full justify-center flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 transition-colors shadow-sm"
-                            >
-                                <Download className="h-4 w-4" />
-                                Merge & Export
-                            </button>
-                        )}
-                        <button
-                           onClick={() => setViewMode('grid')}
-                           className="w-full justify-center flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground bg-secondary hover:bg-secondary/80 transition-colors"
-                        >
-                            Back to Grid
-                        </button>
-                    </div>
-                </div>
-                
-                {/* Main Editor */}
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -188,43 +143,6 @@ import SidebarList from '@/components/factory/SidebarList';
     });
   }, [pdfItems, splitPDF]);
 
-  const handleDownloadZip = useCallback(async () => {
-    if (pdfItems.length === 0) return;
-    
-    try {
-      // Dynamic import
-      const JSZip = (await import('jszip')).default;
-      const zip = new JSZip();
-      
-      pdfItems.forEach((item, index) => {
-        zip.file(item.file.name || `doc-${index}.pdf`, item.file);
-      });
-      
-      const content = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(content);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `pdf-factory-batch-${Date.now()}.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      toast({
-        title: "ZIP Downloaded",
-        description: `Compressed ${pdfItems.length} files.`
-      });
-      
-    } catch (e) {
-      console.error(e);
-      toast({
-        title: "Error creating ZIP",
-        description: "Could not compress files.",
-        variant: "destructive"
-      });
-    }
-  }, [pdfItems]);
-
   // Adapt Items to UI Pages for the Grid
   const uiPages = pdfItems.map((item, index) => ({
     id: item.id,
@@ -239,9 +157,7 @@ import SidebarList from '@/components/factory/SidebarList';
   const handleSplitMode = async () => {
     if (pdfItems.length === 0) return;
     
-    // Auto-extract pages if we have any multi-page docs or just to ensure uniform tokenization
-    // Actually, user might just want to rearrange existing "page items" if they are already single pages.
-    // But "Split" implies breaking them down.
+    // Auto-extract pages if we have any multi-page docs
     await handleExtractPages();
     
     setViewMode('split');
@@ -309,15 +225,6 @@ import SidebarList from '@/components/factory/SidebarList';
                     )}
                 </UploadZone>
              </div>
-// ... imports
-import SidebarList from '@/components/factory/SidebarList';
-
-
-// ... inside handleExport ...
-      link.download = `pdf-factory-${Date.now()}.pdf`;
-
-
-// ... inside render: Split View ...
         ) : (
             /* Split & Rearrange View */
             <div className="flex h-full">
@@ -384,7 +291,7 @@ import SidebarList from '@/components/factory/SidebarList';
         )}
       </main>
 
-      {/* Legacy Modal (kept just in case logic needs it, but mostly unused in Split mode) */}
+      {/* Legacy Modal (kept for Grid View editing) */}
       <PDFEditor 
         isOpen={!!editingItemId}
         onClose={() => setEditingItemId(null)}
