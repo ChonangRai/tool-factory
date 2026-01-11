@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Type, Square, Save, Undo, RotateCw, Trash2 } from 'lucide-react';
+import { Type, Square, Save, Undo, RotateCw, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Configure worker
@@ -19,17 +19,20 @@ interface PDFPageEditorProps {
 const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDFPageEditorProps) => {
   const [tool, setTool] = useState<'none' | 'text' | 'rect'>('none');
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   
-  // State for annotations
+  // State
+  const [zoom, setZoom] = useState(1.0);
   const [annotations, setAnnotations] = useState<any[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
-  const [currentRect, setCurrentRect] = useState<any>(null); // Temporary rect being drawn
-  const [renderKey, setRenderKey] = useState(0); // Force re-render on file change
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 }); // In Ratio coords
+  const [currentRect, setCurrentRect] = useState<any>(null); // In Ratio coords
+  const [renderKey, setRenderKey] = useState(0);
 
   // Reset annotations when file changes
   useEffect(() => {
     setAnnotations([]);
+    setZoom(1.0);
     setRenderKey(prev => prev + 1);
   }, [file]);
   
@@ -43,7 +46,9 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
           const pdf = await loadingTask.promise;
           const page = await pdf.getPage(1);
           
-          const viewport = page.getViewport({ scale: 1.5 }); // Good quality for editing
+          // Use Zoom level for scale
+          // Standard scale 1.5 * zoom for quality
+          const viewport = page.getViewport({ scale: 1.5 * zoom });
           const canvas = canvasRef.current;
           if (!canvas) return;
           
@@ -66,25 +71,28 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
       };
       renderPage();
     }
-  }, [file, renderKey]);
+  }, [file, renderKey, zoom]);
   
-  const getMousePos = (e: React.MouseEvent) => {
+  // Helper: Convert Event Client Pos to Ratio Coords (0-1)
+  const getMousePosRatio = (e: React.MouseEvent) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
-    // Calculate scale ratio between displayed size and actual canvas size
-    const scaleX = canvasRef.current.width / rect.width;
-    const scaleY = canvasRef.current.height / rect.height;
     
+    // Relative position in pixels within the displayed canvas
+    const x_px = e.clientX - rect.left;
+    const y_px = e.clientY - rect.top;
+    
+    // Convert to Ratio (0-1)
     return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY
+      x: Math.max(0, Math.min(1, x_px / rect.width)),
+      y: Math.max(0, Math.min(1, y_px / rect.height))
     };
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (tool === 'none') return;
     setIsDrawing(true);
-    const pos = getMousePos(e);
+    const pos = getMousePosRatio(e);
     setStartPos(pos);
     
     if (tool === 'text') {
@@ -95,17 +103,17 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
           x: pos.x,
           y: pos.y,
           text: text,
-          size: 20 * 1.5, // Scale font size to match canvas scale
+          size: 0.03, // Relative size... tricky. Let's start with approx 20px at normal scale?
           color: 'red'
         }]);
       }
-      setIsDrawing(false); // Text is instant placement for now
+      setIsDrawing(false); 
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDrawing || tool !== 'rect') return;
-    const pos = getMousePos(e);
+    const pos = getMousePosRatio(e);
     setCurrentRect({
       x: Math.min(pos.x, startPos.x),
       y: Math.min(pos.y, startPos.y),
@@ -120,7 +128,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
       setAnnotations(prev => [...prev, {
         type: 'rect',
         ...currentRect,
-        color: 'rgba(255, 0, 0, 0.3)', // Semi-transparent red
+        color: 'rgba(255, 0, 0, 0.3)',
         borderColor: 'red'
       }]);
       setCurrentRect(null);
@@ -130,9 +138,6 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
   
   const handleSave = async () => {
     if (!file) return;
-
-    // If no annotations, just save same file? Or warn?
-    // Let's allow saving even if just for flow
     
     try {
       const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
@@ -143,25 +148,34 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
       
       const { width, height } = firstPage.getSize();
       
-      // Canvas was rendered at scale 1.5
-      // Canvas width = PDF width * 1.5
-      // Mouse coordinates are in Canvas space
-      // So we need to divide by 1.5 to get PDF space
-      const scale = 1.5;
-
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-      // Apply annotations
+      // Apply annotations using Ratio coords -> PDF coords
       for (const ann of annotations) {
+        // PDF X = ratio * width
+        // PDF Y = height - (ratio * height)  [since PDF Origin is Bottom-Left]
+        
+        const pdfX = ann.x * width;
+        // Correct Y conversion: 
+        // Canvas Y=0 is TOP. PDF Y=0 is BOTTOM.
+        // Canvas Ratio Y=0.1 means 10% from Top.
+        // PDF Ratio Y needs to be 90% from Bottom?
+        // pdfY = height - (ann.y * height)
+        const pdfY_Top = ann.y * height; // distance from top in PDF units
+        
         if (ann.type === 'rect') {
-           // PDF Lib uses Bottom-Left origin. Canvas uses Top-Left.
-           // y_pdf = height - (y_canvas / scale) - (height_rect / scale)
+           const w = ann.width * width;
+           const h = ann.height * height;
+           
+           // drawRectangle x,y is bottom-left corner of rect
+           // If we have top-left relative to page top...
+           // y = height - top_y - h
            
            firstPage.drawRectangle({
-             x: ann.x / scale,
-             y: height - (ann.y / scale) - (ann.height / scale),
-             width: ann.width / scale,
-             height: ann.height / scale,
+             x: pdfX,
+             y: height - pdfY_Top - h,
+             width: w,
+             height: h,
              borderColor: rgb(1, 0, 0),
              color: rgb(1, 0, 0),
              borderWidth: 2,
@@ -169,10 +183,14 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
            });
         }
         else if (ann.type === 'text') {
+           // drawText x,y is baseline origin? Usually bottom-left.
+           const fontSize = 20; // Fixed font size for now or scale relative to width?
+           // text ann.size was 0.03
+           
            firstPage.drawText(ann.text, {
-             x: ann.x / scale,
-             y: height - (ann.y / scale),
-             size: ann.size / scale, 
+             x: pdfX,
+             y: height - pdfY_Top - fontSize, // approximate top alignment
+             size: fontSize, 
              font: helveticaFont,
              color: rgb(1, 0, 0),
            });
@@ -190,7 +208,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
   return (
     <div className={`flex flex-col h-full ${className}`}>
         {/* Toolbar */}
-        <div className="flex items-center gap-2 border-b bg-card p-2 shadow-sm z-10">
+        <div className="flex items-center gap-2 border-b bg-card p-2 shadow-sm z-10 sticky top-0">
           <Button 
             variant={tool === 'text' ? 'default' : 'outline'}
             size="sm"
@@ -205,6 +223,19 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
           >
             <Square className="mr-2 h-4 w-4" /> Box
           </Button>
+          
+          <div className="mx-2 w-px h-6 bg-border" />
+          
+          <Button variant="ghost" size="sm" onClick={() => setZoom(z => Math.max(0.5, z - 0.25))} title="Zoom Out">
+             <ZoomOut className="h-4 w-4" />
+          </Button>
+          <span className="text-xs w-12 text-center text-muted-foreground">{Math.round(zoom * 100)}%</span>
+          <Button variant="ghost" size="sm" onClick={() => setZoom(z => Math.min(3, z + 0.25))} title="Zoom In">
+             <ZoomIn className="h-4 w-4" />
+          </Button>
+
+          <div className="mx-2 w-px h-6 bg-border" />
+
           <Button 
             variant="ghost" 
             size="sm" 
@@ -213,8 +244,6 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
           >
             <Undo className="mr-2 h-4 w-4" /> Undo
           </Button>
-
-          <div className="mx-2 w-px h-6 bg-border" />
 
           {onRotate && (
             <Button variant="ghost" size="sm" onClick={onRotate} title="Rotate Page">
@@ -235,15 +264,19 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
         </div>
 
         {/* Editor Canvas Area */}
-        <div className="flex-1 overflow-auto bg-muted/20 flex items-start justify-center p-8">
+        <div className="flex-1 overflow-auto bg-muted/20 flex items-start justify-center p-8 select-none">
             <div 
-                className="relative shadow-lg ring-1 ring-border my-auto"
+                ref={containerRef}
+                className="relative shadow-lg ring-1 ring-border my-auto bg-white transition-all duration-200"
+                style={{ 
+                    // No explicit width/height here, canvas sets it
+                }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
             >
                 {/* PDF Background */}
-                <canvas ref={canvasRef} className="bg-white block max-w-full" />
+                <canvas ref={canvasRef} className="block" />
                 
                 {/* Annotation Overlay */}
                 <svg className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }}>
@@ -251,14 +284,23 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                         <React.Fragment key={i}>
                             {ann.type === 'rect' && (
                                 <rect 
-                                    x={ann.x} y={ann.y} width={ann.width} height={ann.height} 
+                                    x={`${ann.x * 100}%`} y={`${ann.y * 100}%`} 
+                                    width={`${ann.width * 100}%`} height={`${ann.height * 100}%`} 
                                     fill={ann.color} stroke={ann.borderColor} strokeWidth="2"
+                                    vectorEffect="non-scaling-stroke"
                                 />
                             )}
                             {ann.type === 'text' && (
                                 <text 
-                                    x={ann.x} y={ann.y} 
-                                    fontSize={ann.size} fill={ann.color} fontWeight="bold"
+                                    x={`${ann.x * 100}%`} y={`${ann.y * 100}%`} 
+                                    dy="1em"
+                                    fontSize="20" // Fixed font size in pixels? Or relative?
+                                    // SVG text scaling is tricky with percentage coords if we want constant font size.
+                                    // But here the SVG scales with Canvas. So font size 20 means 20px at zoom 1 (if w/h match).
+                                    // Actually, if we use % for X/Y, the SVG ViewBox is usually the issue.
+                                    // If we don't set viewBox, 1 unit = 1 pixel.
+                                    // x="50%" works.
+                                    fill={ann.color} fontWeight="bold"
                                 >
                                     {ann.text}
                                 </text>
@@ -267,8 +309,8 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                     ))}
                     {currentRect && (
                         <rect 
-                            x={currentRect.x} y={currentRect.y} 
-                            width={currentRect.width} height={currentRect.height} 
+                            x={`${currentRect.x * 100}%`} y={`${currentRect.y * 100}%`} 
+                            width={`${currentRect.width * 100}%`} height={`${currentRect.height * 100}%`} 
                             fill="rgba(255,0,0,0.1)" stroke="red" strokeWidth="2" strokeDasharray="5,5"
                         />
                     )}

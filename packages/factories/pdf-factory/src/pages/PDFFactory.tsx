@@ -8,7 +8,8 @@ import EmptyState from '@/components/factory/EmptyState';
 import { toast } from '@/hooks/use-toast';
 import { Download } from 'lucide-react';
 import PDFEditor from '@/components/factory/PDFEditor';
-import PDFPageEditor from '@/components/factory/PDFPageEditor'; // Added import
+import PDFPageEditor from '@/components/factory/PDFPageEditor';
+import SidebarList from '@/components/factory/SidebarList';
 
 const Index = () => {
   const [pdfItems, setPdfItems] = useState<PDFPageItem[]>([]);
@@ -102,7 +103,52 @@ const Index = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `pdf-forge-${Date.now()}.pdf`;
+import SidebarList from '@/components/factory/SidebarList';
+
+// ... (inside component)
+
+// Fix filename in handleExport
+      link.download = `pdf-factory-${Date.now()}.pdf`;
+
+// ... (in render)
+
+        ) : (
+            /* Split & Rearrange View */
+            <div className="flex h-full">
+                {/* Sidebar */}
+                <div className="w-64 border-r border-border bg-muted/10 flex flex-col">
+                    <div className="p-4 border-b border-border bg-background">
+                         <h3 className="font-medium text-sm">Pages</h3>
+                         <p className="text-xs text-muted-foreground">{pdfItems.length} pages</p>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4">
+                        <SidebarList 
+                            pages={uiPages}
+                            selectedId={selectedPageId}
+                            onSelect={setSelectedPageId}
+                            onReorder={handleReorder}
+                        />
+                    </div>
+                    <div className="p-4 border-t border-border bg-background space-y-2">
+                        {pdfItems.length >= 2 && (
+                            <button
+                                onClick={handleExport}
+                                className="w-full justify-center flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 transition-colors shadow-sm"
+                            >
+                                <Download className="h-4 w-4" />
+                                Merge & Export
+                            </button>
+                        )}
+                        <button
+                           onClick={() => setViewMode('grid')}
+                           className="w-full justify-center flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground bg-secondary hover:bg-secondary/80 transition-colors"
+                        >
+                            Back to Grid
+                        </button>
+                    </div>
+                </div>
+                
+                {/* Main Editor */}
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -263,6 +309,15 @@ const Index = () => {
                     )}
                 </UploadZone>
              </div>
+// ... imports
+import SidebarList from '@/components/factory/SidebarList';
+
+
+// ... inside handleExport ...
+      link.download = `pdf-factory-${Date.now()}.pdf`;
+
+
+// ... inside render: Split View ...
         ) : (
             /* Split & Rearrange View */
             <div className="flex h-full">
@@ -273,33 +328,23 @@ const Index = () => {
                          <p className="text-xs text-muted-foreground">{pdfItems.length} pages</p>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4">
-                        <div className="space-y-3">
-                             {/* We can reuse the sortable PageGrid but force 1 column */}
-                             {/* Actually, PageGrid hardcodes grid classes. Let's make a mini wrapper or just style render */}
-                             <div className="grid grid-cols-1 gap-3">
-                                {uiPages.map(page => (
-                                    <div 
-                                      key={page.id} 
-                                      onClick={() => setSelectedPageId(page.id)}
-                                      className={`relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${selectedPageId === page.id ? 'border-primary ring-2 ring-primary/20' : 'border-transparent hover:border-primary/50'}`}
-                                    >
-                                        <div className="pointer-events-none">
-                                           {/* Reuse PageCard but static/mini */}
-                                            <PageCard
-                                                pageNumber={page.pageNumber}
-                                                rotation={page.rotation}
-                                                file={page.file}
-                                                onRotate={() => {}}
-                                                onRemove={() => {}}
-                                                onEdit={() => {}}
-                                            />
-                                        </div>
-                                    </div>
-                                ))}
-                             </div>
-                        </div>
+                        <SidebarList 
+                            pages={uiPages}
+                            selectedId={selectedPageId}
+                            onSelect={setSelectedPageId}
+                            onReorder={handleReorder}
+                        />
                     </div>
-                    <div className="p-4 border-t border-border bg-background">
+                    <div className="p-4 border-t border-border bg-background space-y-2">
+                        {pdfItems.length >= 2 && (
+                            <button
+                                onClick={handleExport}
+                                className="w-full justify-center flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 transition-colors shadow-sm"
+                            >
+                                <Download className="h-4 w-4" />
+                                Merge & Export
+                            </button>
+                        )}
                         <button
                            onClick={() => setViewMode('grid')}
                            className="w-full justify-center flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground bg-secondary hover:bg-secondary/80 transition-colors"
