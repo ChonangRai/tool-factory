@@ -1,4 +1,3 @@
-import { Factory } from "lucide-react";
 import { motion } from "framer-motion";
 
 const HeroSection = () => {
@@ -17,9 +16,7 @@ const HeroSection = () => {
         >
           {/* Logo */}
           <div className="flex items-center justify-center gap-3">
-            <div className="rounded-xl bg-primary p-3 shadow-elevated">
-              <Factory className="h-8 w-8 text-primary-foreground" />
-            </div>
+            <img src="/logo.png" alt="Logo" className="h-32 w-32" />
           </div>
 
           {/* Headline */}
