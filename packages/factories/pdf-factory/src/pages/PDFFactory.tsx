@@ -53,11 +53,12 @@ const Index = () => {
     setEditingItemId(id);
   }, []);
 
-  const handleSaveEdit = useCallback((newFile: File) => {
-    if (!editingItemId) return;
+  const handleSaveEdit = useCallback((newFile: File, targetId?: string) => {
+    const idToUpdate = targetId || editingItemId;
+    if (!idToUpdate) return;
 
     setPdfItems(prev => prev.map(item => {
-      if (item.id === editingItemId) {
+      if (item.id === idToUpdate) {
         return {
           ...item,
           file: newFile,
@@ -67,7 +68,11 @@ const Index = () => {
       return item;
     }));
     
-    setEditingItemId(null);
+    if (!targetId) {
+      // Only close if it was the legacy modal
+      setEditingItemId(null);
+    }
+    
     toast({
       title: "Changes Saved",
       description: "PDF updated successfully."
@@ -266,7 +271,7 @@ const Index = () => {
                     {selectedPageId ? (
                         <PDFPageEditor 
                           file={pdfItems.find(i => i.id === selectedPageId)?.file || null}
-                          onSave={handleSaveEdit}
+                          onSave={(newFile) => handleSaveEdit(newFile, selectedPageId)}
                           onRotate={() => handleRotate(selectedPageId)}
                           onDelete={() => {
                               handleRemove(selectedPageId);
