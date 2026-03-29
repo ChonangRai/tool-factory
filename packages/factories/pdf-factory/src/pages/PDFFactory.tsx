@@ -7,13 +7,13 @@ import PageCard from '@/components/factory/PageCard';
 import EmptyState from '@/components/factory/EmptyState';
 import { toast } from '@/hooks/use-toast';
 import { Download } from 'lucide-react';
-import PDFEditor from '@/components/factory/PDFEditor';
 import PDFPageEditor from '@/components/factory/PDFPageEditor';
 import SidebarList from '@/components/factory/SidebarList';
 
 const Index = () => {
   const [pdfItems, setPdfItems] = useState<PDFPageItem[]>([]);
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'split'>('grid');
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const { mergePDFs, splitPDF, isProcessing } = usePDF();
 
   const handleUpload = useCallback((newFiles: File[]) => {
@@ -49,12 +49,50 @@ const Index = () => {
     });
   }, []);
 
-  const handleEdit = useCallback((id: string) => {
-    setEditingItemId(id);
-  }, []);
+  const handleEdit = useCallback(async (id: string) => {
+    if (pdfItems.length === 0) return;
+    
+    toast({
+      title: "Opening in Split View...",
+      description: "Preparing pages for editing."
+    });
+    
+    const newItems: PDFPageItem[] = [];
+    let selectedExtractedId: string | null = null;
+    
+    for (const item of pdfItems) {
+      const blobs = await splitPDF(item.file);
+      blobs.forEach((blob, index) => {
+        const newFile = new File([blob], `${item.file.name.replace('.pdf', '')}-page-${index + 1}.pdf`, {
+          type: 'application/pdf'
+        });
+        
+        const newId = `${newFile.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        newItems.push({
+          id: newId,
+          file: newFile,
+          rotation: 0
+        });
+
+        // Try to match the clicked document's first page
+        if (item.id === id && index === 0) {
+            selectedExtractedId = newId;
+        }
+      });
+    }
+
+    setPdfItems(newItems);
+    setViewMode('split');
+    
+    if (selectedExtractedId) {
+        setSelectedPageId(selectedExtractedId);
+    } else if (newItems.length > 0) {
+        setSelectedPageId(newItems[0].id);
+    }
+  }, [pdfItems, splitPDF]);
 
   const handleSaveEdit = useCallback((newFile: File, targetId?: string) => {
-    const idToUpdate = targetId || editingItemId;
+    const idToUpdate = targetId;
     if (!idToUpdate) return;
 
     setPdfItems(prev => prev.map(item => {
@@ -68,16 +106,11 @@ const Index = () => {
       return item;
     }));
     
-    if (!targetId) {
-      // Only close if it was the legacy modal
-      setEditingItemId(null);
-    }
-    
     toast({
       title: "Changes Saved",
       description: "PDF updated successfully."
     });
-  }, [editingItemId]);
+  }, []);
 
   const handleRotate = useCallback((id: string) => {
     setPdfItems(prev => prev.map(item => 
@@ -155,9 +188,6 @@ const Index = () => {
     rotation: item.rotation,
     file: item.file
   }));
-
-  const [viewMode, setViewMode] = useState<'grid' | 'split'>('grid');
-  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
 
   const handleSplitMode = async () => {
     if (pdfItems.length === 0) return;
@@ -295,14 +325,6 @@ const Index = () => {
             </div>
         )}
       </main>
-
-      {/* Legacy Modal (kept for Grid View editing) */}
-      <PDFEditor 
-        isOpen={!!editingItemId}
-        onClose={() => setEditingItemId(null)}
-        file={pdfItems.find(i => i.id === editingItemId)?.file || null}
-        onSave={handleSaveEdit}
-      />
     </div>
   );
 };

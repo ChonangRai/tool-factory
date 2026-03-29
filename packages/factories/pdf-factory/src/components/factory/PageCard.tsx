@@ -49,11 +49,10 @@ const PageCard = ({ pageNumber, rotation, file, onRotate, onRemove, onEdit, isDr
         canvas.width = viewport.width;
 
         if (context) {
-          const renderContext = {
+          await page.render({
             canvasContext: context,
             viewport: viewport,
-          };
-          await page.render(renderContext).promise;
+          } as any).promise;
           if (active) setThumbnailGenerated(true);
         }
       } catch (error) {
@@ -112,12 +111,6 @@ const PageCard = ({ pageNumber, rotation, file, onRotate, onRemove, onEdit, isDr
           </div>
         )}
         
-        {/* Overlay with Edit Button */}
-        <div className={`absolute inset-0 bg-black/5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity`}>
-           <span className="bg-white/90 text-foreground text-xs font-medium px-2 py-1 rounded shadow-sm">
-             Click to Edit
-           </span>
-        </div>
       </div>
 
       {/* Footer Info */}

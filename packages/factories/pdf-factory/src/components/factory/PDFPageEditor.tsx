@@ -16,27 +16,23 @@ interface PDFPageEditorProps {
   className?: string;
 }
 
-const COLORS = [
-  { label: 'Red', value: '#ef4444' },
-  { label: 'Blue', value: '#3b82f6' },
-  { label: 'Green', value: '#22c55e' },
-  { label: 'Black', value: '#000000' },
-  { label: 'White', value: '#ffffff' }
-];
-
 const BORDER_SIZES = [0, 1, 2, 4, 8];
 
 const hexToRgbTuple = (hex: string): [number, number, number] => {
-    const r = parseInt(hex.slice(1, 3), 16) / 255;
-    const g = parseInt(hex.slice(3, 5), 16) / 255;
-    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    // Basic hex parsing, supporting #RGB and #RRGGBB
+    let h = hex.replace('#', '');
+    if (h.length === 3) h = [...h].map(x => x + x).join('');
+    const r = parseInt(h.slice(0, 2), 16) / 255;
+    const g = parseInt(h.slice(2, 4), 16) / 255;
+    const b = parseInt(h.slice(4, 6), 16) / 255;
     return [r, g, b];
 };
 
 const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDFPageEditorProps) => {
   const [tool, setTool] = useState<'none' | 'text' | 'rect'>('none');
-  const [color, setColor] = useState(COLORS[0].value);
+  const [color, setColor] = useState('#ef4444');
   const [borderSize, setBorderSize] = useState(2);
+  const [opacity, setOpacity] = useState(25);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -141,10 +137,10 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
       setAnnotations(prev => [...prev, {
         type: 'rect',
         ...currentRect,
-        color: `${color}40`, // 25% opacity for fill
+        color: color,
+        opacity: opacity / 100,
         borderColor: borderSize > 0 ? color : 'transparent',
-        borderWidth: borderSize,
-        hexColor: color
+        borderWidth: borderSize
       }]);
       setCurrentRect(null);
     }
@@ -172,7 +168,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
            const w = ann.width * width;
            const h = ann.height * height;
            
-           const [r, g, b] = hexToRgbTuple(ann.hexColor || '#ff0000');
+           const [r, g, b] = hexToRgbTuple(ann.color || '#ff0000');
            firstPage.drawRectangle({
              x: pdfX,
              y: height - pdfY_Top - h,
@@ -181,7 +177,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
              borderColor: ann.borderWidth > 0 ? rgb(r, g, b) : undefined,
              color: rgb(r, g, b),
              borderWidth: ann.borderWidth * 0.5, // Scale down border for PDF visually
-             opacity: 0.25,
+             opacity: ann.opacity ?? 0.25,
            });
         }
         else if (ann.type === 'text') {
@@ -228,23 +224,21 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
           <div className="mx-2 w-px h-6 bg-border hidden sm:block" />
           
           {/* Customization Controls */}
-          <div className="flex items-center gap-2">
-             <div className="flex gap-1 bg-muted p-1 rounded-md">
-                 {COLORS.map(c => (
-                     <button
-                        key={c.value}
-                        onClick={() => setColor(c.value)}
-                        className={`w-5 h-5 rounded-full border border-border shadow-sm transition-transform hover:scale-110 ${color === c.value ? 'ring-2 ring-primary ring-offset-1' : ''}`}
-                        style={{ backgroundColor: c.value }}
-                        title={c.label}
-                     />
-                 ))}
-             </div>
+          <div className="flex items-center gap-2 bg-muted/50 p-1 px-2 rounded-md">
+             <input 
+                type="color" 
+                value={color} 
+                onChange={(e) => setColor(e.target.value)} 
+                className="w-7 h-7 p-0 border-0 rounded cursor-pointer shrink-0 bg-transparent"
+                title="Choose Color"
+             />
+             
+             <div className="h-4 w-px bg-border mx-1" />
              
              <select 
                 value={borderSize} 
                 onChange={(e) => setBorderSize(Number(e.target.value))}
-                className="h-8 rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm hidden sm:block"
+                className="h-7 w-24 rounded border border-input bg-background px-2 text-xs shadow-sm hidden sm:block"
              >
                 <option value={0}>No Border</option>
                 <option value={1}>1px Border</option>
@@ -252,6 +246,20 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                 <option value={4}>4px Border</option>
                 <option value={8}>8px Border</option>
              </select>
+
+             <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
+
+             <div className="items-center gap-1.5 px-1 hidden lg:flex">
+                <span className="text-xs text-muted-foreground mr-1">Opacity</span>
+                <input 
+                   type="range" 
+                   min="0" max="100" 
+                   value={opacity} 
+                   onChange={(e) => setOpacity(Number(e.target.value))} 
+                   className="w-20 accent-primary"
+                />
+                <span className="text-xs w-8 text-right tabular-nums text-muted-foreground">{opacity}%</span>
+             </div>
           </div>
 
           <div className="mx-2 w-px h-6 bg-border hidden sm:block" />
@@ -312,7 +320,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                                 <rect 
                                     x={`${ann.x * 100}%`} y={`${ann.y * 100}%`} 
                                     width={`${ann.width * 100}%`} height={`${ann.height * 100}%`} 
-                                    fill={ann.color} stroke={ann.borderColor} strokeWidth={ann.borderWidth}
+                                    fill={ann.color} fillOpacity={ann.opacity ?? 0.25} stroke={ann.borderColor} strokeWidth={ann.borderWidth}
                                     vectorEffect="non-scaling-stroke"
                                 />
                             )}
@@ -332,7 +340,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                         <rect 
                             x={`${currentRect.x * 100}%`} y={`${currentRect.y * 100}%`} 
                             width={`${currentRect.width * 100}%`} height={`${currentRect.height * 100}%`} 
-                            fill={`${color}20`} stroke={borderSize > 0 ? color : 'transparent'} strokeWidth={borderSize > 0 ? borderSize : 2} strokeDasharray={borderSize === 0 ? "5,5" : undefined}
+                            fill={color} fillOpacity={opacity / 100} stroke={borderSize > 0 ? color : 'transparent'} strokeWidth={borderSize > 0 ? borderSize : 2} strokeDasharray={borderSize === 0 ? "5,5" : undefined}
                         />
                     )}
                 </svg>
