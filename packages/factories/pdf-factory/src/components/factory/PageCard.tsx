@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { RotateCw, Trash2, GripVertical, FileText } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 // Configure worker - using unpkg for specific version matching
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
