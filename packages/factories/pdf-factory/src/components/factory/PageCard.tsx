@@ -144,7 +144,9 @@ const PageCard = ({ pageNumber, rotation, file, onRotate, onRemove, onEdit, isDr
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onRemove();
+            if (window.confirm("Are you sure you want to delete this page? This action cannot be undone.")) {
+              onRemove();
+            }
           }}
           className="factory-icon-btn destructive bg-destructive/10 text-destructive hover:bg-destructive hover:text-white"
           title="Remove file"

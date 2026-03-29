@@ -42,7 +42,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
   const [fontFamily, setFontFamily] = useState('Helvetica');
   const [fontSize, setFontSize] = useState(20);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [dragState, setDragState] = useState<{ startX: number, startY: number, initialItemX: number, initialItemY: number } | null>(null);
+  const [dragState, setDragState] = useState<{ action: 'move'|'resize', startX: number, startY: number, initialItemX: number, initialItemY: number, initialItemW?: number, initialItemH?: number } | null>(null);
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -219,15 +219,13 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
         const dx = pos.x - dragState.startX;
         const dy = pos.y - dragState.startY;
         
-        setAnnotations(prev => {
-           const newAnns = [...prev];
-           newAnns[selectedIndex] = {
-              ...newAnns[selectedIndex],
-              x: dragState.initialItemX + dx,
-              y: dragState.initialItemY + dy
-           };
-           return newAnns;
-        });
+        if (dragState.action === 'resize') {
+            updateSelectedProperty('width', Math.max(0.01, dragState.initialItemW! + dx));
+            updateSelectedProperty('height', Math.max(0.01, dragState.initialItemH! + dy));
+        } else {
+            updateSelectedProperty('x', dragState.initialItemX + dx);
+            updateSelectedProperty('y', dragState.initialItemY + dy);
+        }
         return;
     }
 
@@ -469,7 +467,11 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
             </Button>
           )}
           {onDelete && (
-             <Button variant="ghost" size="sm" onClick={onDelete} className="text-destructive hover:text-destructive hidden sm:flex" title="Delete Page">
+             <Button variant="ghost" size="sm" onClick={() => {
+                 if (window.confirm("Are you sure you want to delete this page? This action cannot be undone.")) {
+                     onDelete();
+                 }
+             }} className="text-destructive hover:text-destructive hidden sm:flex" title="Delete Page">
                 <Trash2 className="h-4 w-4" />
              </Button>
           )}
@@ -510,6 +512,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                                                setSelectedIndex(i);
                                                const pos = getMousePosRatio(e as any);
                                                setDragState({
+                                                   action: 'move',
                                                    startX: pos.x,
                                                    startY: pos.y,
                                                    initialItemX: ann.x,
@@ -522,13 +525,36 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                                         }}
                                     />
                                     {selectedIndex === i && (
-                                        <rect 
-                                            x={`${ann.x * 100}%`} y={`${ann.y * 100}%`} 
-                                            width={`${ann.width * 100}%`} height={`${ann.height * 100}%`} 
-                                            fill="transparent"
-                                            stroke="#3b82f6" strokeWidth={2} strokeDasharray="4,4"
-                                            className="pointer-events-none"
-                                        />
+                                        <React.Fragment>
+                                            <rect 
+                                                x={`${ann.x * 100}%`} y={`${ann.y * 100}%`} 
+                                                width={`${ann.width * 100}%`} height={`${ann.height * 100}%`} 
+                                                fill="transparent"
+                                                stroke="#3b82f6" strokeWidth={2} strokeDasharray="4,4"
+                                                className="pointer-events-none"
+                                            />
+                                            <rect 
+                                                x={`${(ann.x + ann.width) * 100}%`} 
+                                                y={`${(ann.y + ann.height) * 100}%`} 
+                                                width="10" height="10"
+                                                transform="translate(-5, -5)"
+                                                fill="#ffffff" stroke="#3b82f6" strokeWidth={2}
+                                                className="cursor-nwse-resize pointer-events-auto"
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    const pos = getMousePosRatio(e as any);
+                                                    setDragState({
+                                                        action: 'resize',
+                                                        startX: pos.x,
+                                                        startY: pos.y,
+                                                        initialItemX: ann.x,
+                                                        initialItemY: ann.y,
+                                                        initialItemW: ann.width,
+                                                        initialItemH: ann.height
+                                                    });
+                                                }}
+                                            />
+                                        </React.Fragment>
                                     )}
                                 </React.Fragment>
                             )}
@@ -558,6 +584,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                                             setSelectedIndex(i);
                                             const pos = getMousePosRatio(e as any);
                                             setDragState({
+                                                action: 'move',
                                                 startX: pos.x,
                                                 startY: pos.y,
                                                 initialItemX: ann.x,
