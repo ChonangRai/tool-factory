@@ -2,6 +2,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+// @ts-ignore
+import { Resend } from "npm:resend";
 
 declare const Deno: any;
 
@@ -68,13 +70,15 @@ serve(async (req: Request) => {
 
 async function sendEmailNotifications(submission: any) {
   try {
-    const sendgridApiKey = Deno.env.get('SENDGRID_API_KEY');
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
     const emailFrom = Deno.env.get('EMAIL_FROM');
 
-    if (!sendgridApiKey || !emailFrom) {
+    if (!resendApiKey || !emailFrom) {
       console.log('Email configuration missing, skipping notifications');
       return;
     }
+    
+    const resend = new Resend(resendApiKey);
 
     const targetEmail = submission.email || submission.data?.email;
 
@@ -122,28 +126,15 @@ async function sendEmailNotifications(submission: any) {
     `;
 
     // Send confirmation email to submitter
-    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${sendgridApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        personalizations: [{
-          to: [{ email: targetEmail }],
-          subject: `${formName} - Receipt Submission Confirmed`,
-        }],
-        from: { email: emailFrom },
-        content: [{
-          type: 'text/html',
-          value: emailContent,
-        }],
-      }),
+    const { data, error } = await resend.emails.send({
+      from: emailFrom,
+      to: [targetEmail],
+      subject: `${formName} - Receipt Submission Confirmed`,
+      html: emailContent,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`SendGrid API Error: ${errorText}`);
+    if (error) {
+      throw new Error(`Resend API Error: ${error.message}`);
     }
 
     console.log('Email sent successfully');

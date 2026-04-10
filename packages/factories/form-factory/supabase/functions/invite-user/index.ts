@@ -1,5 +1,7 @@
 // @ts-ignore
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+// @ts-ignore
+import { Resend } from "npm:resend";
 
 declare const Deno: any;
 
@@ -22,12 +24,14 @@ serve(async (req: Request) => {
       throw new Error('Email and invite link are required');
     }
 
-    const sendgridApiKey = Deno.env.get('SENDGRID_API_KEY');
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
     const emailFrom = Deno.env.get('EMAIL_FROM');
 
-    if (!sendgridApiKey || !emailFrom) {
+    if (!resendApiKey || !emailFrom) {
       throw new Error('Email configuration missing in Edge Function secrets');
     }
+    
+    const resend = new Resend(resendApiKey);
 
     const emailContent = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
@@ -44,29 +48,16 @@ serve(async (req: Request) => {
       </div>
     `;
 
-    // Send email via SendGrid
-    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${sendgridApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        personalizations: [{
-          to: [{ email: email }],
-          subject: `Invitation to join ${organization_name || 'ToolFactory'}`,
-        }],
-        from: { email: emailFrom },
-        content: [{
-          type: 'text/html',
-          value: emailContent,
-        }],
-      }),
+    // Send email via Resend
+    const { data, error } = await resend.emails.send({
+      from: emailFrom,
+      to: [email],
+      subject: `Invitation to join ${organization_name || 'ToolFactory'}`,
+      html: emailContent,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`SendGrid API Error: ${errorText}`);
+    if (error) {
+      throw new Error(`Resend API Error: ${error.message}`);
     }
 
     console.log(`Invitation email sent to ${email}`);

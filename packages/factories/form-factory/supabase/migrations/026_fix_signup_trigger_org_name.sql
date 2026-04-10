@@ -1,27 +1,5 @@
--- Comprehensive fix for Unknown names in User Management
--- This updates existing profiles AND fixes the signup trigger
+-- Fix for handle_new_user_signup: remove invalid DUAL/window SELECT that caused signup errors
 
--- 1. Update all existing profiles with missing or Unknown names/emails
-UPDATE profiles p
-SET 
-  name = COALESCE(
-    NULLIF(TRIM(p.name), ''),  -- Keep existing non-empty name
-    NULLIF(TRIM(p.name), 'Unknown'),  -- Replace "Unknown"
-    (SELECT TRIM(raw_user_meta_data->>'name') FROM auth.users WHERE id = p.id),
-    (SELECT TRIM(raw_user_meta_data->>'full_name') FROM auth.users WHERE id = p.id),
-    (SELECT TRIM(raw_user_meta_data->>'display_name') FROM auth.users WHERE id = p.id),
-    split_part(p.email, '@', 1)  -- Fallback to email username
-  ),
-  email = COALESCE(
-    NULLIF(TRIM(p.email), ''),
-    NULLIF(TRIM(p.email), 'Unknown'),
-    (SELECT email FROM auth.users WHERE id = p.id)
-  )
-WHERE 
-  (name IS NULL OR name = '' OR name = 'Unknown') 
-  OR (email IS NULL OR email = '' OR email = 'Unknown');
-
--- 2. Fix the signup trigger to use email as fallback for invited users
 CREATE OR REPLACE FUNCTION handle_new_user_signup()
 RETURNS TRIGGER 
 SECURITY DEFINER
