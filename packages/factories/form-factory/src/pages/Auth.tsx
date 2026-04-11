@@ -190,6 +190,7 @@ export default function Auth() {
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setLoading(true);
     try {
       const { error } = await resetPassword(resetEmail);
