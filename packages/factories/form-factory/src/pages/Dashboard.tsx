@@ -142,7 +142,7 @@ export default function Dashboard() {
 
   const handleDownloadReceipt = async (file: { path: string; filename: string }) => {
     try {
-      const url = await storage.getDownloadUrl(file.path);
+      const url = await storage.getDownloadUrl(file.path, 3600, file.filename);
       const a = document.createElement('a');
       a.href = url;
       a.download = file.filename;

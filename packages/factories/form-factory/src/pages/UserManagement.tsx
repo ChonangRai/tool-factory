@@ -304,36 +304,21 @@ export default function UserManagement() {
           created_by: currentUser?.id,
           expires_at: expiresAt.toISOString(),
         })
-        .select('token')
+        .select('id, token')
         .single();
 
       if (error) throw error;
 
       const inviteLink = `${window.location.origin}/auth?mode=signup&token=${data.token}`;
-      
-      // If email provided, send invitation email via Edge Function
+
+      // If email provided, send invitation email via Edge Function.
+      // The function accepts only the invitation id -- it independently
+      // re-derives and re-authorizes everything else (org name, inviter
+      // name, link, destination email) from trusted database state, so
+      // nothing display-related sent from here is trusted by the function.
       if (inviteEmail) {
-        // Fetch organization name
-        const { data: org } = await (supabase as any)
-          .from('organizations')
-          .select('name')
-          .eq('id', organizationId)
-          .single();
-
-        // Get inviter name
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('name')
-          .eq('id', currentUser?.id)
-          .single();
-
         const { error: funcError } = await supabase.functions.invoke('invite-user', {
-          body: {
-            email: inviteEmail,
-            invite_link: inviteLink,
-            organization_name: org?.name || 'ToolFactory',
-            inviter_name: profile?.name || 'A team member'
-          }
+          body: { invitation_id: data.id }
         });
 
         if (funcError) {
@@ -362,29 +347,8 @@ export default function UserManagement() {
     }
 
     try {
-      // Fetch organization name
-      const { data: org } = await (supabase as any)
-        .from('organizations')
-        .select('name')
-        .eq('id', organizationId)
-        .single();
-
-      // Get inviter name
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('name')
-        .eq('id', currentUser?.id)
-        .single();
-
-      const inviteLink = `${window.location.origin}/auth?mode=signup&token=${invite.token}`;
-
       const { error } = await supabase.functions.invoke('invite-user', {
-        body: {
-          email: invite.email,
-          invite_link: inviteLink,
-          organization_name: org?.name || 'ToolFactory',
-          inviter_name: profile?.name || 'A team member'
-        }
+        body: { invitation_id: invite.id }
       });
 
       if (error) throw error;

@@ -151,7 +151,7 @@ export default function Admin() {
   const [submissionCounts, setSubmissionCounts] = useState<Record<string, number>>({});
 
   // Receipt preview state
-  const [previewReceipt, setPreviewReceipt] = useState<{ url: string; filename: string } | null>(null);
+  const [previewReceipt, setPreviewReceipt] = useState<{ url: string; filename: string; path: string } | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [formFilter, setFormFilter] = useState<'all' | 'active' | 'archived'>('active');
 
@@ -407,7 +407,7 @@ export default function Admin() {
 
   const handleDownloadReceipt = async (file: { path: string; filename: string }) => {
     try {
-      const url = await storage.getDownloadUrl(file.path);
+      const url = await storage.getDownloadUrl(file.path, 3600, file.filename);
       const a = document.createElement('a');
       a.href = url;
       a.download = file.filename;
@@ -422,7 +422,7 @@ export default function Admin() {
     setLoadingPreview(true);
     try {
       const url = await storage.getDownloadUrl(file.path, 3600); // 1 hour expiry
-      setPreviewReceipt({ url, filename: file.filename });
+      setPreviewReceipt({ url, filename: file.filename, path: file.path });
     } catch (error: any) {
       console.error('Error loading receipt:', error);
       toast.error('Failed to load receipt');
@@ -1210,12 +1210,18 @@ export default function Admin() {
             <DialogFooter>
               <Button
                 variant="outline"
-                onClick={() => {
-                  if (previewReceipt) {
+                onClick={async () => {
+                  if (!previewReceipt) return;
+                  try {
+                    // Fetch a fresh URL with forced attachment disposition --
+                    // the preview URL above is intentionally not
+                    // download-forced, so it can't just be reused here.
+                    const downloadUrl = await storage.getDownloadUrl(previewReceipt.path, 3600, previewReceipt.filename);
                     const a = document.createElement('a');
-                    a.href = previewReceipt.url;
-                    a.download = previewReceipt.filename;
+                    a.href = downloadUrl;
                     a.click();
+                  } catch (error: any) {
+                    toast.error('Failed to download receipt');
                   }
                 }}
               >
