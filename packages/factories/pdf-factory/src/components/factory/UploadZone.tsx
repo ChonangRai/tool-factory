@@ -1,14 +1,30 @@
 import { useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
+import { useDropzone, Accept } from 'react-dropzone';
 import { Upload, FileText, Plus } from 'lucide-react';
 
 interface UploadZoneProps {
   onUpload: (files: File[]) => void;
+  onRejected?: (fileNames: string[]) => void;
   children?: (props: { open: () => void }) => React.ReactNode;
   hasFiles?: boolean;
+  accept?: Accept;
+  formatLabels?: string[];
+  dropLabel?: string;
+  maxSizeLabel?: string;
 }
 
-const UploadZone = ({ onUpload, children, hasFiles }: UploadZoneProps) => {
+const DEFAULT_ACCEPT: Accept = { 'application/pdf': ['.pdf'] };
+
+const UploadZone = ({
+  onUpload,
+  onRejected,
+  children,
+  hasFiles,
+  accept = DEFAULT_ACCEPT,
+  formatLabels = ['PDF'],
+  dropLabel = 'Drop your PDFs into the factory',
+  maxSizeLabel = 'Max 50MB',
+}: UploadZoneProps) => {
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
       onUpload(acceptedFiles);
@@ -17,9 +33,10 @@ const UploadZone = ({ onUpload, children, hasFiles }: UploadZoneProps) => {
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
-    accept: {
-      'application/pdf': ['.pdf']
+    onDropRejected: (fileRejections) => {
+      onRejected?.(fileRejections.map((r) => r.file.name));
     },
+    accept,
     multiple: true,
     noClick: hasFiles // Disable click to upload on container if files exist (let button handle it)
   });
@@ -61,7 +78,7 @@ const UploadZone = ({ onUpload, children, hasFiles }: UploadZoneProps) => {
           {/* Text */}
           <div className="space-y-1">
             <p className="text-lg font-medium text-foreground">
-              {isDragActive ? 'Release to upload' : 'Drop your PDFs into the factory'}
+              {isDragActive ? 'Release to upload' : dropLabel}
             </p>
             <p className="text-sm text-muted-foreground">
               or click to upload
@@ -70,10 +87,12 @@ const UploadZone = ({ onUpload, children, hasFiles }: UploadZoneProps) => {
 
           {/* Supported formats */}
           <div className="mt-2 flex items-center gap-2">
-            <span className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
-              PDF
-            </span>
-            <span className="text-xs text-muted-foreground">Max 50MB</span>
+            {formatLabels.map((label) => (
+              <span key={label} className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
+                {label}
+              </span>
+            ))}
+            <span className="text-xs text-muted-foreground">{maxSizeLabel}</span>
           </div>
         </div>
       )}

@@ -1,12 +1,13 @@
 import { useState, useCallback } from 'react';
 import { usePDF, PDFPageItem } from '@/hooks/usePDF';
+import { validatePDFFiles } from '@/lib/pdfValidation';
+import { downloadBlob } from '@/lib/download';
 import Header from '@/components/factory/Header';
 import UploadZone from '@/components/factory/UploadZone';
 import PageGrid from '@/components/factory/PageGrid';
-import PageCard from '@/components/factory/PageCard';
 import EmptyState from '@/components/factory/EmptyState';
 import { toast } from '@/hooks/use-toast';
-import { Download } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
 import PDFPageEditor from '@/components/factory/PDFPageEditor';
 import SidebarList from '@/components/factory/SidebarList';
 
@@ -16,17 +17,39 @@ const Index = () => {
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const { mergePDFs, splitPDF, isProcessing } = usePDF();
 
-  const handleUpload = useCallback((newFiles: File[]) => {
-    const newItems = newFiles.map((file) => ({
-      id: `${file.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      file,
-      rotation: 0,
-    }));
-    
-    setPdfItems(prev => [...prev, ...newItems]);
+  const handleUpload = useCallback(async (newFiles: File[]) => {
+    const existingPageCount = pdfItems.reduce((sum, item) => sum + item.pageCount, 0);
+    const { valid, errors } = await validatePDFFiles(newFiles, pdfItems.length, existingPageCount);
+
+    if (valid.length > 0) {
+      const newItems: PDFPageItem[] = valid.map(({ file, pageCount }) => ({
+        id: `${file.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        file,
+        rotation: 0,
+        pageCount,
+      }));
+
+      setPdfItems(prev => [...prev, ...newItems]);
+      toast({
+        title: "PDFs uploaded",
+        description: `${valid.length} file(s) added to the factory`,
+      });
+    }
+
+    if (errors.length > 0) {
+      toast({
+        title: valid.length > 0 ? "Some files were skipped" : "Upload failed",
+        description: errors.slice(0, 3).join(' '),
+        variant: "destructive",
+      });
+    }
+  }, [pdfItems]);
+
+  const handleRejected = useCallback((fileNames: string[]) => {
     toast({
-      title: "PDFs uploaded",
-      description: `${newFiles.length} file(s) added to the factory`,
+      title: "Some files were skipped",
+      description: `${fileNames.join(', ')}: not a PDF file.`,
+      variant: "destructive",
     });
   }, []);
 
@@ -49,47 +72,13 @@ const Index = () => {
     });
   }, []);
 
-  const handleEdit = useCallback(async (id: string) => {
-    if (pdfItems.length === 0) return;
-    
-    toast({
-      title: "Opening in Split View...",
-      description: "Preparing pages for editing."
-    });
-    
-    const newItems: PDFPageItem[] = [];
-    let selectedExtractedId: string | null = null;
-    
-    for (const item of pdfItems) {
-      const blobs = await splitPDF(item.file);
-      blobs.forEach((blob, index) => {
-        const newFile = new File([blob], `${item.file.name.replace('.pdf', '')}-page-${index + 1}.pdf`, {
-          type: 'application/pdf'
-        });
-        
-        const newId = `${newFile.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        newItems.push({
-          id: newId,
-          file: newFile,
-          rotation: 0
-        });
-
-        // Try to match the clicked document's first page
-        if (item.id === id && index === 0) {
-            selectedExtractedId = newId;
-        }
-      });
-    }
-
-    setPdfItems(newItems);
+  const handleEdit = useCallback((id: string) => {
+    // Open the annotator directly on this document -- no forced splitting.
+    // PDFPageEditor handles navigation across all of the document's pages
+    // itself, so a multi-page PDF stays a single item here.
+    setSelectedPageId(id);
     setViewMode('split');
-    
-    if (selectedExtractedId) {
-        setSelectedPageId(selectedExtractedId);
-    } else if (newItems.length > 0) {
-        setSelectedPageId(newItems[0].id);
-    }
-  }, [pdfItems, splitPDF]);
+  }, []);
 
   const handleSaveEdit = useCallback((newFile: File, targetId?: string) => {
     const idToUpdate = targetId;
@@ -97,18 +86,19 @@ const Index = () => {
 
     setPdfItems(prev => prev.map(item => {
       if (item.id === idToUpdate) {
+        // Rotation is a separate, pending transform applied at export time
+        // (see mergePDFs) -- annotating a page must not silently discard it.
         return {
           ...item,
           file: newFile,
-          rotation: 0 // Reset rotation as editor saves baked-in
         };
       }
       return item;
     }));
-    
+
     toast({
-      title: "Changes Saved",
-      description: "PDF updated successfully."
+      title: "Changes saved",
+      description: "Annotations saved to the PDF."
     });
   }, []);
 
@@ -130,32 +120,22 @@ const Index = () => {
   const handleExport = useCallback(async () => {
     if (pdfItems.length === 0) return;
 
-    toast({
-      title: "Processing PDFs...",
-      description: `Preparing ${pdfItems.length} files.`,
-    });
-
     const blob = await mergePDFs(pdfItems);
-    
+
     if (blob) {
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `pdf-factory-${Date.now()}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      const filename = pdfItems.length === 1 ? pdfItems[0].file.name : `merged-${Date.now()}.pdf`;
+      downloadBlob(blob, filename);
+      toast({
+        title: "Export complete",
+        description: pdfItems.length === 1
+          ? `${filename} is ready.`
+          : `${pdfItems.length} files merged into ${filename}.`,
+      });
     }
   }, [pdfItems, mergePDFs]);
 
   const handleExtractPages = useCallback(async () => {
     if (pdfItems.length === 0) return;
-    
-    toast({
-      title: "Extracting pages...",
-      description: "Breaking down files into individual pages."
-    });
 
     const newItems: PDFPageItem[] = [];
 
@@ -169,7 +149,8 @@ const Index = () => {
         newItems.push({
           id: `${newFile.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           file: newFile,
-          rotation: 0
+          rotation: 0,
+          pageCount: 1
         });
       });
     }
@@ -191,12 +172,15 @@ const Index = () => {
 
   const handleSplitMode = async () => {
     if (pdfItems.length === 0) return;
-    
+
     // Auto-extract pages if we have any multi-page docs
     await handleExtractPages();
-    
+
     setViewMode('split');
   };
+
+  const exportLabel = pdfItems.length >= 2 ? 'Merge & Export' : 'Export PDF';
+  const selectedItem = pdfItems.find(i => i.id === selectedPageId) || null;
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -206,7 +190,7 @@ const Index = () => {
         {viewMode === 'grid' ? (
              /* Standard Grid Layout */
              <div className="h-full overflow-y-auto px-4 py-8 sm:px-6 lg:px-8">
-                <UploadZone onUpload={handleUpload} hasFiles={pdfItems.length > 0}>
+                <UploadZone onUpload={handleUpload} onRejected={handleRejected} hasFiles={pdfItems.length > 0}>
                     {({ open }) => (
                     <>
                         {pdfItems.length > 0 ? (
@@ -230,25 +214,31 @@ const Index = () => {
                             />
 
                             {/* Action Buttons */}
-                            <div className="flex justify-end items-center mt-8 pt-8 border-t border-dashed border-border gap-4">
+                            <div className="flex flex-wrap justify-end items-center mt-8 pt-8 border-t border-dashed border-border gap-4">
                                 <button
                                     onClick={handleSplitMode}
-                                    className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-foreground border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+                                    disabled={isProcessing}
+                                    className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-foreground border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
                                 >
-                                    <div className="flex gap-0.5">
-                                        <div className="h-3 w-2 border border-current rounded-[1px]" />
-                                        <div className="h-3 w-2 border border-current rounded-[1px]" />
-                                    </div>
-                                    <span>Split & Rearrange</span>
+                                    {isProcessing ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <div className="flex gap-0.5">
+                                            <div className="h-3 w-2 border border-current rounded-[1px]" />
+                                            <div className="h-3 w-2 border border-current rounded-[1px]" />
+                                        </div>
+                                    )}
+                                    <span>{isProcessing ? 'Processing...' : 'Split & Rearrange'}</span>
                                 </button>
 
-                                {pdfItems.length >= 2 && (
+                                {pdfItems.length >= 1 && (
                                     <button
                                     onClick={handleExport}
-                                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors"
+                                    disabled={isProcessing}
+                                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none"
                                     >
-                                    <Download className="h-4 w-4" />
-                                    <span>Merge & Export</span>
+                                    {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                                    <span>{isProcessing ? 'Processing...' : exportLabel}</span>
                                     </button>
                                 )}
                             </div>
@@ -262,15 +252,15 @@ const Index = () => {
              </div>
         ) : (
             /* Split & Rearrange View */
-            <div className="flex h-full">
+            <div className="flex h-full flex-col sm:flex-row">
                 {/* Sidebar */}
-                <div className="w-64 border-r border-border bg-muted/10 flex flex-col">
+                <div className="flex max-h-56 w-full flex-col border-b border-border bg-muted/10 sm:h-full sm:w-64 sm:max-h-none sm:border-b-0 sm:border-r">
                     <div className="p-4 border-b border-border bg-background">
                          <h3 className="font-medium text-sm">Pages</h3>
-                         <p className="text-xs text-muted-foreground">{pdfItems.length} pages</p>
+                         <p className="text-xs text-muted-foreground">{pdfItems.length} {pdfItems.length === 1 ? 'file' : 'files'}</p>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4">
-                        <SidebarList 
+                        <SidebarList
                             pages={uiPages}
                             selectedId={selectedPageId}
                             onSelect={setSelectedPageId}
@@ -278,13 +268,14 @@ const Index = () => {
                         />
                     </div>
                     <div className="p-4 border-t border-border bg-background space-y-2">
-                        {pdfItems.length >= 2 && (
+                        {pdfItems.length >= 1 && (
                             <button
                                 onClick={handleExport}
-                                className="w-full justify-center flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 transition-colors shadow-sm"
+                                disabled={isProcessing}
+                                className="w-full justify-center flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50 disabled:pointer-events-none"
                             >
-                                <Download className="h-4 w-4" />
-                                Merge & Export
+                                {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                                {isProcessing ? 'Processing...' : exportLabel}
                             </button>
                         )}
                         <button
@@ -295,18 +286,21 @@ const Index = () => {
                         </button>
                     </div>
                 </div>
-                
+
                 {/* Main Editor */}
-                <div className="flex-1 bg-background relative flex flex-col">
+                <div className="flex-1 min-h-0 bg-background relative flex flex-col">
                     {selectedPageId ? (
-                        <PDFPageEditor 
-                          file={pdfItems.find(i => i.id === selectedPageId)?.file || null}
+                        <PDFPageEditor
+                          file={selectedItem?.file || null}
                           onSave={(newFile) => handleSaveEdit(newFile, selectedPageId)}
-                          onRotate={() => handleRotate(selectedPageId)}
-                          onDelete={() => {
+                          // Rotate/delete act on the whole file, so only expose them
+                          // here when the file is a single page -- for a multi-page
+                          // document they'd otherwise silently apply to every page.
+                          onRotate={selectedItem?.pageCount === 1 ? () => handleRotate(selectedPageId) : undefined}
+                          onDelete={selectedItem?.pageCount === 1 ? () => {
                               handleRemove(selectedPageId);
                               setSelectedPageId(null);
-                          }}
+                          } : undefined}
                           className="h-full"
                         />
                     ) : (

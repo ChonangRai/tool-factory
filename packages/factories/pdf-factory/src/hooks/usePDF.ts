@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react';
 import { PDFDocument, degrees } from 'pdf-lib';
-import { toast } from 'sonner';
+import { toast } from '@/hooks/use-toast';
 
 export interface PDFPageItem {
   id: string;
   file: File;
   rotation: number; // 0, 90, 180, 270
+  pageCount: number;
 }
 
 export const usePDF = () => {
@@ -13,7 +14,7 @@ export const usePDF = () => {
 
   const mergePDFs = useCallback(async (items: PDFPageItem[]): Promise<Blob | null> => {
     if (items.length < 1) { // Allow 1 file export (e.g. for rotation only)
-      toast.error('Please select at least 1 PDF file.');
+      toast({ title: 'Nothing to export', description: 'Please select at least 1 PDF file.', variant: 'destructive' });
       return null;
     }
 
@@ -26,7 +27,7 @@ export const usePDF = () => {
         const pdf = await PDFDocument.load(arrayBuffer);
         const pageIndices = pdf.getPageIndices();
         const copiedPages = await mergedPdf.copyPages(pdf, pageIndices);
-        
+
         copiedPages.forEach((page) => {
           // Apply accumulated rotation
           const currentRotation = page.getRotation().angle;
@@ -36,13 +37,12 @@ export const usePDF = () => {
       }
 
       const mergedPdfBytes = await mergedPdf.save();
-      const blob = new Blob([mergedPdfBytes as any], { type: 'application/pdf' });
-      
-      toast.success('PDF processed successfully!');
+      const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+
       return blob;
     } catch (error) {
       console.error('Error processing PDFs:', error);
-      toast.error('Failed to process PDFs. Please try again.');
+      toast({ title: 'Export failed', description: 'Failed to process PDFs. Please try again.', variant: 'destructive' });
       return null;
     } finally {
       setIsProcessing(false);
@@ -62,14 +62,13 @@ export const usePDF = () => {
         const [copiedPage] = await newPdf.copyPages(pdf, [i]);
         newPdf.addPage(copiedPage);
         const pdfBytes = await newPdf.save();
-        blobs.push(new Blob([pdfBytes as any], { type: 'application/pdf' }));
+        blobs.push(new Blob([pdfBytes], { type: 'application/pdf' }));
       }
-      
-      toast.success(`Split into ${blobs.length} pages successfully!`);
+
       return blobs;
     } catch (error) {
       console.error('Error splitting PDF:', error);
-      toast.error('Failed to split PDF.');
+      toast({ title: 'Split failed', description: 'Failed to split PDF.', variant: 'destructive' });
       return [];
     } finally {
       setIsProcessing(false);

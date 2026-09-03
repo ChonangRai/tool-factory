@@ -1,9 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { RotateCw, Trash2, GripVertical, FileText } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-
-// Configure worker - using unpkg for specific version matching
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+import pdfjsLib from '@/lib/pdfWorker';
 
 interface PageCardProps {
   pageNumber: number;
@@ -13,9 +10,10 @@ interface PageCardProps {
   onRemove: () => void;
   onEdit: () => void;
   isDragging?: boolean;
+  dragHandleProps?: React.HTMLAttributes<HTMLDivElement> & { ref?: React.Ref<HTMLDivElement> };
 }
 
-const PageCard = ({ pageNumber, rotation, file, onRotate, onRemove, onEdit, isDragging = false }: PageCardProps) => {
+const PageCard = ({ pageNumber, rotation, file, onRotate, onRemove, onEdit, isDragging = false, dragHandleProps }: PageCardProps) => {
   const [isHovered, setIsHovered] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [thumbnailGenerated, setThumbnailGenerated] = useState(false);
@@ -73,11 +71,13 @@ const PageCard = ({ pageNumber, rotation, file, onRotate, onRemove, onEdit, isDr
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Drag Handle (Visible on hover or mobile) */}
-      <div 
-        className={`absolute left-2 top-2 z-20 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-foreground transition-opacity ${
-          isHovered ? 'opacity-100' : 'opacity-0 sm:opacity-0'
+      {/* Drag Handle (always visible on touch, hover-revealed on desktop) */}
+      <div
+        {...dragHandleProps}
+        className={`absolute left-1 top-1 z-20 flex h-8 w-8 items-center justify-center rounded-md cursor-grab touch-none active:cursor-grabbing text-muted-foreground/60 hover:text-foreground hover:bg-background/80 transition-opacity opacity-100 sm:opacity-0 sm:group-hover:opacity-100 ${
+          isHovered ? 'sm:opacity-100' : ''
         }`}
+        aria-label="Drag to reorder"
       >
         <GripVertical className="h-4 w-4" />
       </div>

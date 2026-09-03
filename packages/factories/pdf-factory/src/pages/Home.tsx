@@ -17,42 +17,56 @@ const features = [
   {
     icon: Shuffle,
     title: 'Reorder Pages',
-    description: 'Drag and drop to rearrange PDF pages in any order you need.',
-  },
-  {
-    icon: Image,
-    title: 'PDF to Image',
-    description: 'Convert PDF pages to JPG, PNG, or other image formats.',
-  },
-  {
-    icon: FileOutput,
-    title: 'Image to PDF',
-    description: 'Transform your images into professional PDF documents.',
-  },
-  {
-    icon: Minimize2,
-    title: 'Compress PDF',
-    description: 'Reduce file size while maintaining quality for easy sharing.',
+    description: 'Drag and drop (or touch) to rearrange PDF pages in any order you need.',
+    available: true,
+    path: '/factory',
   },
   {
     icon: Merge,
     title: 'Merge PDFs',
     description: 'Combine multiple PDF files into a single document.',
+    available: true,
+    path: '/factory',
   },
   {
     icon: Scissors,
     title: 'Split PDF',
     description: 'Extract specific pages or split into multiple files.',
+    available: true,
+    path: '/factory',
+  },
+  {
+    icon: FileText,
+    title: 'Edit PDF',
+    description: 'Rotate, delete, and annotate pages within your PDF.',
+    available: true,
+    path: '/factory',
+  },
+  {
+    icon: Image,
+    title: 'PDF to Image',
+    description: 'Export PDF pages as PNG or JPEG images.',
+    available: true,
+    path: '/factory/pdf-to-image',
+  },
+  {
+    icon: FileOutput,
+    title: 'Image to PDF',
+    description: 'Combine JPEG and PNG images into a single PDF document.',
+    available: true,
+    path: '/factory/image-to-pdf',
+  },
+  {
+    icon: Minimize2,
+    title: 'Compress PDF',
+    description: 'Reduce file size while maintaining quality for easy sharing.',
+    available: false,
   },
   {
     icon: Lock,
     title: 'Protect PDF',
     description: 'Add password protection to secure your documents.',
-  },
-  {
-    icon: FileText,
-    title: 'Edit PDF',
-    description: 'Rotate, delete, and modify pages within your PDF.',
+    available: false,
   },
 ];
 
@@ -76,7 +90,7 @@ const Home = () => {
                 <span className="block text-primary">PDF Factory</span>
               </h1>
               <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
-                Transform, convert, compress, and manage your PDF files with powerful tools. 
+                Merge, split, reorder, and edit your PDF files with powerful tools.
                 No uploads to external servers — everything runs right in your browser.
               </p>
               <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row hover:cursor-pointer">
@@ -105,22 +119,46 @@ const Home = () => {
             </div>
 
             <div className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {features.map((feature) => (
-                <div
-                  key={feature.title}
-                  className="group rounded-2xl border border-border bg-card p-6 shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
-                >
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                    <feature.icon className="h-6 w-6" />
+              {features.map((feature) => {
+                const cardClassName = `group rounded-2xl border border-border bg-card p-6 shadow-sm transition-all ${
+                  feature.available ? 'hover:border-primary/30 hover:shadow-md' : 'opacity-60'
+                }`;
+
+                const cardContent = (
+                  <>
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                        <feature.icon className="h-6 w-6" />
+                      </div>
+                      {!feature.available && (
+                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                          Coming soon
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="mb-2 text-lg font-semibold text-foreground">
+                      {feature.title}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {feature.description}
+                    </p>
+                  </>
+                );
+
+                if (feature.available && feature.path) {
+                  return (
+                    <Link key={feature.title} to={feature.path} className={cardClassName}>
+                      {cardContent}
+                    </Link>
+                  );
+                }
+
+                return (
+                  <div key={feature.title} className={cardClassName}>
+                    {cardContent}
                   </div>
-                  <h3 className="mb-2 text-lg font-semibold text-foreground">
-                    {feature.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {feature.description}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>

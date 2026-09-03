@@ -1,4 +1,20 @@
-import { useState } from 'react';
+import {
+  DndContext,
+  DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import PageCard from './PageCard';
 
 interface Page {
@@ -15,87 +31,79 @@ interface SidebarListProps {
   onReorder: (pages: Page[]) => void;
 }
 
-const SidebarList = ({ pages, selectedId, onSelect, onReorder }: SidebarListProps) => {
-  const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
+interface SortableRowProps {
+  page: Page;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+}
 
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    setDraggedId(id);
-    e.dataTransfer.effectAllowed = 'move';
-    // Transparent drag image or just default
-  };
+const SortableRow = ({ page, isSelected, onSelect }: SortableRowProps) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: page.id });
 
-  const handleDragOver = (e: React.DragEvent, id: string) => {
-    e.preventDefault();
-    if (id !== draggedId) {
-      setDragOverId(id);
-    }
-  };
-
-  const handleDragLeave = () => {
-    setDragOverId(null);
-  };
-
-  const handleDrop = (e: React.DragEvent, targetId: string) => {
-    e.preventDefault();
-    if (!draggedId || draggedId === targetId) return;
-
-    const draggedIndex = pages.findIndex(p => p.id === draggedId);
-    const targetIndex = pages.findIndex(p => p.id === targetId);
-
-    const newPages = [...pages];
-    const [draggedPage] = newPages.splice(draggedIndex, 1);
-    newPages.splice(targetIndex, 0, draggedPage);
-
-    // Update page numbers implicitly via order, parent handles ID/File mapping
-    // But we need to pass back the reordered array
-    const reorderedPages = newPages.map((page, index) => ({
-      ...page,
-      pageNumber: index + 1
-    }));
-
-    onReorder(reorderedPages);
-    setDraggedId(null);
-    setDragOverId(null);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedId(null);
-    setDragOverId(null);
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
   };
 
   return (
-    <div className="space-y-3">
-      {pages.map((page) => (
-        <div 
-            key={page.id} 
-            draggable
-            onDragStart={(e) => handleDragStart(e, page.id)}
-            onDragOver={(e) => handleDragOver(e, page.id)}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, page.id)}
-            onDragEnd={handleDragEnd}
-            onClick={() => onSelect(page.id)}
-            className={`
-                relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer 
-                ${selectedId === page.id ? 'border-primary ring-2 ring-primary/20' : 'border-transparent hover:border-primary/50'}
-                ${dragOverId === page.id ? 'border-t-4 border-t-primary mt-4' : ''} 
-                ${draggedId === page.id ? 'opacity-50' : ''}
-            `}
-        >
-            <div className="pointer-events-none">
-                <PageCard
-                    pageNumber={page.pageNumber}
-                    rotation={page.rotation}
-                    file={page.file}
-                    onRotate={() => {}}
-                    onRemove={() => {}}
-                    onEdit={() => {}}
-                />
-            </div>
-        </div>
-      ))}
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={() => onSelect(page.id)}
+      className={`
+          relative w-28 shrink-0 sm:w-auto rounded-lg overflow-hidden border-2 transition-all cursor-grab active:cursor-grabbing touch-none
+          ${isSelected ? 'border-primary ring-2 ring-primary/20' : 'border-transparent hover:border-primary/50'}
+          ${isDragging ? 'opacity-50' : ''}
+      `}
+    >
+      <div className="pointer-events-none">
+        <PageCard
+          pageNumber={page.pageNumber}
+          rotation={page.rotation}
+          file={page.file}
+          onRotate={() => {}}
+          onRemove={() => {}}
+          onEdit={() => {}}
+        />
+      </div>
     </div>
+  );
+};
+
+const SidebarList = ({ pages, selectedId, onSelect, onReorder }: SidebarListProps) => {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = pages.findIndex((p) => p.id === active.id);
+    const newIndex = pages.findIndex((p) => p.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(pages, oldIndex, newIndex).map((page, index) => ({
+      ...page,
+      pageNumber: index + 1,
+    }));
+
+    onReorder(reordered);
+  };
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={pages.map((p) => p.id)} strategy={rectSortingStrategy}>
+        <div className="flex gap-3 overflow-x-auto pb-1 sm:block sm:space-y-3 sm:overflow-visible sm:pb-0">
+          {pages.map((page) => (
+            <SortableRow key={page.id} page={page} isSelected={selectedId === page.id} onSelect={onSelect} />
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 };
 

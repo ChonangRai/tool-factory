@@ -1,12 +1,21 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { Button } from '@/components/ui/button';
-import { Type, Square, Save, Undo, RotateCw, Trash2, ZoomIn, ZoomOut, MousePointer2 } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
-
-// Configure worker
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
-}
+import {
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  MousePointer2,
+  RotateCw,
+  Save,
+  Square,
+  Trash2,
+  Type,
+  Undo,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
+import pdfjsLib from '@/lib/pdfWorker';
 
 interface PDFPageEditorProps {
   file: File | null;
@@ -15,8 +24,6 @@ interface PDFPageEditorProps {
   onDelete?: () => void;
   className?: string;
 }
-
-const BORDER_SIZES = [0, 1, 2, 4, 8];
 
 const hexToRgbTuple = (hex: string): [number, number, number] => {
     // Basic hex parsing, supporting #RGB and #RRGGBB
@@ -31,7 +38,7 @@ const hexToRgbTuple = (hex: string): [number, number, number] => {
 const getCssFontFamily = (family: string) => {
     if (family === 'Times-Roman') return '"Times New Roman", Times, serif';
     if (family === 'Courier') return '"Courier New", Courier, monospace';
-    return 'Helvetica, Arial, sans-serif'; 
+    return 'Helvetica, Arial, sans-serif';
 };
 
 const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDFPageEditorProps) => {
@@ -43,14 +50,33 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
   const [fontSize, setFontSize] = useState(20);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [dragState, setDragState] = useState<{ action: 'move'|'resize', startX: number, startY: number, initialItemX: number, initialItemY: number, initialItemW?: number, initialItemH?: number } | null>(null);
-  
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  
+  const pdfRef = useRef<PDFDocumentProxy | null>(null);
+
   // State
   const [zoom, setZoom] = useState(1.0);
-  const [annotations, setAnnotations] = useState<any[]>([]);
-  
+  // Annotations are kept per page number (1-indexed, stable for the life of
+  // this editing session since pages aren't added/removed/reordered from
+  // within the editor itself) so navigating pages never mixes up content.
+  // Loosely typed like the rest of this file's ad-hoc annotation objects.
+  type AnnotationList = any[];
+  const [annotationsByPage, setAnnotationsByPage] = useState<Record<number, AnnotationList>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [numPages, setNumPages] = useState(1);
+  const [isLoadingDoc, setIsLoadingDoc] = useState(false);
+
+  const annotations = annotationsByPage[currentPage] ?? [];
+  const setAnnotations = (updater: AnnotationList | ((prev: AnnotationList) => AnnotationList)) => {
+    setAnnotationsByPage(prevMap => {
+      const prevForPage = prevMap[currentPage] ?? [];
+      const next = typeof updater === 'function' ? updater(prevForPage) : updater;
+      return { ...prevMap, [currentPage]: next };
+    });
+  };
+  const hasAnyAnnotations = Object.values(annotationsByPage).some(a => a.length > 0);
+
   // Handlers for selected item
   const deleteSelected = () => {
     if (selectedIndex !== null) {
@@ -110,45 +136,91 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
   // Text draft state
   const [activeTextDraft, setActiveTextDraft] = useState<{ x: number, y: number, width?: number, height?: number, text: string } | null>(null);
 
-  // Reset annotations when file changes
+  const resetTransientDrawState = () => {
+    setSelectedIndex(null);
+    setDragState(null);
+    setIsDrawing(false);
+    setCurrentRect(null);
+  };
+
+  // Load the document and reset per-session state whenever a new file is opened.
   useEffect(() => {
-    setAnnotations([]);
+    setAnnotationsByPage({});
+    setCurrentPage(1);
+    setNumPages(1);
     setZoom(1.0);
-    setRenderKey(prev => prev + 1);
+    setActiveTextDraft(null);
+    resetTransientDrawState();
+    pdfRef.current = null;
+
+    if (!file) {
+      setRenderKey(prev => prev + 1);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingDoc(true);
+    (async () => {
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+        if (cancelled) return;
+        pdfRef.current = pdf;
+        setNumPages(pdf.numPages);
+      } catch (error) {
+        console.error('Failed to load PDF for editing', error);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDoc(false);
+          setRenderKey(prev => prev + 1);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [file]);
-  
-  // Render PDF to Canvas
+
+  const goToPage = (page: number) => {
+    const clamped = Math.max(1, Math.min(numPages, page));
+    if (clamped === currentPage) return;
+    if (activeTextDraft) flushTextDraft();
+    resetTransientDrawState();
+    setCurrentPage(clamped);
+  };
+
+  // Render the current page to the canvas whenever the page, zoom, or
+  // underlying document changes.
   useEffect(() => {
     let renderTask: any = null;
     let isActive = true;
+    const pdf = pdfRef.current;
 
-    if (file && canvasRef.current) {
+    if (pdf && canvasRef.current) {
       const renderPage = async () => {
         try {
-          const arrayBuffer = await file.arrayBuffer();
-          const loadingTask = pdfjsLib.getDocument(arrayBuffer);
-          const pdf = await loadingTask.promise;
-          const page = await pdf.getPage(1);
-          
+          const page = await pdf.getPage(currentPage);
+
           if (!isActive) return;
 
           const viewport = page.getViewport({ scale: 1.5 * zoom });
           const canvas = canvasRef.current;
           if (!canvas) return;
-          
+
           const context = canvas.getContext('2d');
           if (!context) return;
-          
+
           canvas.width = viewport.width;
           canvas.height = viewport.height;
-          
+
           context.clearRect(0, 0, canvas.width, canvas.height);
 
           renderTask = page.render({
             canvasContext: context,
             viewport: viewport
           } as any);
-          
+
           await renderTask.promise;
         } catch (error: any) {
             if (error?.name === 'RenderingCancelledException') {
@@ -160,22 +232,22 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
       };
       renderPage();
     }
-    
+
     return () => {
       isActive = false;
       if (renderTask) {
         renderTask.cancel();
       }
     };
-  }, [file, renderKey, zoom]);
-  
+  }, [renderKey, currentPage, zoom]);
+
   const getMousePosRatio = (e: React.MouseEvent) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
-    
+
     const x_px = e.clientX - rect.left;
     const y_px = e.clientY - rect.top;
-    
+
     return {
       x: Math.max(0, Math.min(1, x_px / rect.width)),
       y: Math.max(0, Math.min(1, y_px / rect.height))
@@ -201,7 +273,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
     if (activeTextDraft) {
        flushTextDraft();
     }
-    
+
     if (tool === 'select') {
       setSelectedIndex(null);
       return;
@@ -218,7 +290,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
         const pos = getMousePosRatio(e);
         const dx = pos.x - dragState.startX;
         const dy = pos.y - dragState.startY;
-        
+
         if (dragState.action === 'resize') {
             updateSelectedProperty('width', Math.max(0.01, dragState.initialItemW! + dx));
             updateSelectedProperty('height', Math.max(0.01, dragState.initialItemH! + dy));
@@ -243,7 +315,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
     if (dragState) {
         setDragState(null);
     }
-    
+
     if (!isDrawing) return;
     if (currentRect) {
       if (tool === 'rect') {
@@ -269,19 +341,16 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
     }
     setIsDrawing(false);
   };
-  
+
   const handleSave = async () => {
-    if (!file) return;
-    
+    if (!file || !hasAnyAnnotations) return;
+
     try {
       const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
       const arrayBuffer = await file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       const pages = pdfDoc.getPages();
-      const firstPage = pages[0];
-      
-      const { width, height } = firstPage.getSize();
-      
+
       const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
       const courierFont = await pdfDoc.embedFont(StandardFonts.Courier);
@@ -292,42 +361,51 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
          return helveticaFont;
       };
 
-      for (const ann of annotations) {
-        const pdfX = ann.x * width;
-        const pdfY_Top = ann.y * height; 
-        
-        if (ann.type === 'rect') {
-           const w = ann.width * width;
-           const h = ann.height * height;
-           
-           const [r, g, b] = hexToRgbTuple(ann.color || '#ff0000');
-           firstPage.drawRectangle({
-             x: pdfX,
-             y: height - pdfY_Top - h,
-             width: w,
-             height: h,
-             borderColor: ann.borderWidth > 0 ? rgb(r, g, b) : undefined,
-             color: rgb(r, g, b),
-             borderWidth: ann.borderWidth * 0.5, // Scale down border for PDF visually
-             opacity: ann.opacity ?? 0.25,
-           });
-        }
-        else if (ann.type === 'text') {
-           const size = ann.fontSize || 20; 
-           const [r, g, b] = hexToRgbTuple(ann.color || '#ff0000');
-           
-           firstPage.drawText(ann.text, {
-             x: pdfX,
-             y: height - pdfY_Top - (size * 0.8), // Adjust baseline visually
-             size: size, 
-             font: getFont(ann.fontFamily),
-             color: rgb(r, g, b),
-           });
+      for (const [pageNumStr, pageAnnotations] of Object.entries(annotationsByPage)) {
+        if (!pageAnnotations || pageAnnotations.length === 0) continue;
+
+        const targetPage = pages[Number(pageNumStr) - 1];
+        if (!targetPage) continue;
+
+        const { width, height } = targetPage.getSize();
+
+        for (const ann of pageAnnotations) {
+          const pdfX = ann.x * width;
+          const pdfY_Top = ann.y * height;
+
+          if (ann.type === 'rect') {
+             const w = ann.width * width;
+             const h = ann.height * height;
+
+             const [r, g, b] = hexToRgbTuple(ann.color || '#ff0000');
+             targetPage.drawRectangle({
+               x: pdfX,
+               y: height - pdfY_Top - h,
+               width: w,
+               height: h,
+               borderColor: ann.borderWidth > 0 ? rgb(r, g, b) : undefined,
+               color: rgb(r, g, b),
+               borderWidth: ann.borderWidth * 0.5, // Scale down border for PDF visually
+               opacity: ann.opacity ?? 0.25,
+             });
+          }
+          else if (ann.type === 'text') {
+             const size = ann.fontSize || 20;
+             const [r, g, b] = hexToRgbTuple(ann.color || '#ff0000');
+
+             targetPage.drawText(ann.text, {
+               x: pdfX,
+               y: height - pdfY_Top - (size * 0.8), // Adjust baseline visually
+               size: size,
+               font: getFont(ann.fontFamily),
+               color: rgb(r, g, b),
+             });
+          }
         }
       }
 
       const pdfBytes = await pdfDoc.save();
-      const newFile = new File([pdfBytes as any], file.name, { type: 'application/pdf' });
+      const newFile = new File([pdfBytes], file.name, { type: 'application/pdf' });
       onSave(newFile);
     } catch (e) {
       console.error("Failed to save annotations", e);
@@ -338,30 +416,56 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
     <div className={`flex flex-col h-full ${className}`}>
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b bg-card p-2 shadow-sm z-10 sticky top-0">
-          <Button 
+          <Button
             variant={tool === 'select' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setTool('select')}
           >
             <MousePointer2 className="mr-2 h-4 w-4" /> Select
           </Button>
-          <Button 
+          <Button
             variant={tool === 'text' ? 'default' : 'outline'}
             size="sm"
             onClick={() => { setTool('text'); setSelectedIndex(null); }}
           >
             <Type className="mr-2 h-4 w-4" /> Text
           </Button>
-          <Button 
+          <Button
             variant={tool === 'rect' ? 'default' : 'outline'}
             size="sm"
             onClick={() => { setTool('rect'); setSelectedIndex(null); }}
           >
             <Square className="mr-2 h-4 w-4" /> Box
           </Button>
-          
+
+          {numPages > 1 && (
+            <div className="flex items-center gap-1 rounded-md bg-muted/50 px-1 py-1" title="Navigate pages">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1}
+                title="Previous page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="whitespace-nowrap px-1 text-xs font-medium tabular-nums text-foreground">
+                Page {currentPage} of {numPages}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= numPages}
+                title="Next page"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
           <div className="mx-2 w-px h-6 bg-border hidden sm:block" />
-          
+
           {/* Active Item Context Controls */}
           {selectedIndex !== null && (
               <Button variant="destructive" size="sm" onClick={deleteSelected} title="Delete Selected">
@@ -371,20 +475,20 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
 
           {/* Customization Controls */}
           <div className="flex flex-wrap items-center gap-2 bg-muted/50 p-1 px-2 rounded-md">
-             <input 
-                type="color" 
-                value={color} 
-                onChange={(e) => handleColorChange(e.target.value)} 
+             <input
+                type="color"
+                value={color}
+                onChange={(e) => handleColorChange(e.target.value)}
                 className="w-7 h-7 p-0 border-0 rounded cursor-pointer shrink-0 bg-transparent"
                 title="Choose Color"
              />
-             
+
              <div className="h-4 w-px bg-border mx-1" />
-             
+
              {(tool === 'rect' || (tool === 'select' && selectedIndex !== null && annotations[selectedIndex]?.type === 'rect')) ? (
                  <>
-                     <select 
-                        value={borderSize} 
+                     <select
+                        value={borderSize}
                         onChange={(e) => handleBorderSizeChange(Number(e.target.value))}
                         className="h-7 w-24 rounded border border-input bg-background px-2 text-xs shadow-sm hidden sm:block"
                      >
@@ -394,16 +498,16 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                         <option value={4}>4px Border</option>
                         <option value={8}>8px Border</option>
                      </select>
-        
+
                      <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
-        
+
                      <div className="items-center gap-1.5 px-1 hidden lg:flex">
                         <span className="text-xs text-muted-foreground mr-1">Opacity</span>
-                        <input 
-                           type="range" 
-                           min="0" max="100" 
-                           value={opacity} 
-                           onChange={(e) => handleOpacityChange(Number(e.target.value))} 
+                        <input
+                           type="range"
+                           min="0" max="100"
+                           value={opacity}
+                           onChange={(e) => handleOpacityChange(Number(e.target.value))}
                            className="w-20 accent-primary"
                         />
                         <span className="text-xs w-8 text-right tabular-nums text-muted-foreground">{opacity}%</span>
@@ -411,8 +515,8 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                  </>
              ) : (tool === 'text' || (tool === 'select' && selectedIndex !== null && annotations[selectedIndex]?.type === 'text')) ? (
                  <>
-                     <select 
-                        value={fontFamily} 
+                     <select
+                        value={fontFamily}
                         onChange={(e) => handleFontFamilyChange(e.target.value)}
                         className="h-7 w-28 rounded border border-input bg-background px-2 text-xs shadow-sm focus:outline-none"
                      >
@@ -420,14 +524,14 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                         <option value="Times-Roman">Times Roman</option>
                         <option value="Courier">Courier</option>
                      </select>
-                     
+
                      <div className="h-4 w-px bg-border mx-1" />
-                     
+
                      <div className="flex items-center gap-1.5 px-1">
                         <span className="text-xs text-muted-foreground">Size</span>
-                        <input 
-                           type="number" 
-                           value={fontSize} 
+                        <input
+                           type="number"
+                           value={fontSize}
                            onChange={(e) => handleFontSizeChange(Number(e.target.value) || 20)}
                            className="h-7 w-16 rounded border border-input bg-background px-2 text-xs shadow-sm focus:outline-none"
                            min="8" max="120"
@@ -440,7 +544,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
           </div>
 
           <div className="mx-2 w-px h-6 bg-border hidden sm:block" />
-          
+
           <Button variant="ghost" size="sm" onClick={() => setZoom(z => Math.max(0.25, z - 0.25))} title="Zoom Out">
              <ZoomOut className="h-4 w-4" />
           </Button>
@@ -451,9 +555,9 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
 
           <div className="mx-2 w-px h-6 bg-border hidden sm:block" />
 
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setAnnotations(prev => prev.slice(0, -1))}
             disabled={annotations.length === 0}
             className="hidden sm:flex"
@@ -462,9 +566,12 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
           </Button>
 
           {onRotate && (
-            <Button variant="ghost" size="sm" onClick={onRotate} title="Rotate Page">
-                <RotateCw className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button variant="ghost" size="sm" onClick={onRotate} title="Rotate page (applied when you export -- the preview here stays unrotated)">
+                  <RotateCw className="h-4 w-4" />
+              </Button>
+              <span className="hidden text-xs text-muted-foreground sm:inline">Applied on export</span>
+            </div>
           )}
           {onDelete && (
              <Button variant="ghost" size="sm" onClick={() => {
@@ -477,32 +584,38 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
           )}
 
           <div className="flex-1" />
-          
-          <Button size="sm" onClick={handleSave} disabled={annotations.length === 0}>
+
+          <Button size="sm" onClick={handleSave} disabled={!hasAnyAnnotations}>
             <Save className="mr-2 h-4 w-4" /> Save
           </Button>
         </div>
 
         {/* Editor Canvas Area */}
-        <div className="flex-1 overflow-auto bg-muted/20 flex items-start justify-center p-8 select-none">
-            <div 
+        <div className="flex-1 overflow-auto bg-muted/20 flex items-start justify-center p-4 sm:p-8 select-none">
+            {isLoadingDoc ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
+                <Loader2 className="h-8 w-8 animate-spin" />
+                <p>Loading page…</p>
+              </div>
+            ) : (
+            <div
                 ref={containerRef}
-                className="relative shadow-lg ring-1 ring-border my-auto bg-white transition-all duration-200"
+                className="relative shadow-lg ring-1 ring-border my-auto bg-white transition-all duration-200 max-w-full"
                 style={{ cursor: tool !== 'none' ? 'crosshair' : 'default' }}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
             >
-                <canvas ref={canvasRef} className="block" />
-                
+                <canvas ref={canvasRef} className="block max-w-full" />
+
                 <svg className="absolute inset-0 pointer-events-none" style={{ width: '100%', height: '100%' }}>
                     {annotations.map((ann, i) => (
                         <React.Fragment key={i}>
                             {ann.type === 'rect' && (
                                 <React.Fragment>
-                                    <rect 
-                                        x={`${ann.x * 100}%`} y={`${ann.y * 100}%`} 
-                                        width={`${ann.width * 100}%`} height={`${ann.height * 100}%`} 
+                                    <rect
+                                        x={`${ann.x * 100}%`} y={`${ann.y * 100}%`}
+                                        width={`${ann.width * 100}%`} height={`${ann.height * 100}%`}
                                         fill={ann.color} fillOpacity={ann.opacity ?? 0.25} stroke={ann.borderColor} strokeWidth={ann.borderWidth}
                                         vectorEffect="non-scaling-stroke"
                                         className={tool === 'select' ? 'cursor-pointer pointer-events-auto hover:opacity-80' : ''}
@@ -526,16 +639,16 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                                     />
                                     {selectedIndex === i && (
                                         <React.Fragment>
-                                            <rect 
-                                                x={`${ann.x * 100}%`} y={`${ann.y * 100}%`} 
-                                                width={`${ann.width * 100}%`} height={`${ann.height * 100}%`} 
+                                            <rect
+                                                x={`${ann.x * 100}%`} y={`${ann.y * 100}%`}
+                                                width={`${ann.width * 100}%`} height={`${ann.height * 100}%`}
                                                 fill="transparent"
                                                 stroke="#3b82f6" strokeWidth={2} strokeDasharray="4,4"
                                                 className="pointer-events-none"
                                             />
-                                            <rect 
-                                                x={`${(ann.x + ann.width) * 100}%`} 
-                                                y={`${(ann.y + ann.height) * 100}%`} 
+                                            <rect
+                                                x={`${(ann.x + ann.width) * 100}%`}
+                                                y={`${(ann.y + ann.height) * 100}%`}
                                                 width="10" height="10"
                                                 transform="translate(-5, -5)"
                                                 fill="#ffffff" stroke="#3b82f6" strokeWidth={2}
@@ -559,10 +672,10 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                                 </React.Fragment>
                             )}
                             {ann.type === 'text' && (
-                                <text 
-                                    x={`${ann.x * 100}%`} y={`${ann.y * 100}%`} 
+                                <text
+                                    x={`${ann.x * 100}%`} y={`${ann.y * 100}%`}
                                     dy="1em"
-                                    fontSize={ann.fontSize || 20} 
+                                    fontSize={ann.fontSize || 20}
                                     fontFamily={getCssFontFamily(ann.fontFamily || 'Helvetica')}
                                     fill={ann.color} fontWeight="normal"
                                     className={(tool === 'text' || tool === 'select') ? 'cursor-pointer pointer-events-auto hover:opacity-80 transition-opacity' : ''}
@@ -614,13 +727,13 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                         </React.Fragment>
                     ))}
                     {currentRect && (
-                        <rect 
-                            x={`${currentRect.x * 100}%`} y={`${currentRect.y * 100}%`} 
-                            width={`${currentRect.width * 100}%`} height={`${currentRect.height * 100}%`} 
-                            fill={tool === 'text' ? 'transparent' : color} 
-                            fillOpacity={tool === 'text' ? 1 : opacity / 100} 
-                            stroke={tool === 'text' ? color : (borderSize > 0 ? color : 'transparent')} 
-                            strokeWidth={borderSize > 0 ? borderSize : 2} 
+                        <rect
+                            x={`${currentRect.x * 100}%`} y={`${currentRect.y * 100}%`}
+                            width={`${currentRect.width * 100}%`} height={`${currentRect.height * 100}%`}
+                            fill={tool === 'text' ? 'transparent' : color}
+                            fillOpacity={tool === 'text' ? 1 : opacity / 100}
+                            stroke={tool === 'text' ? color : (borderSize > 0 ? color : 'transparent')}
+                            strokeWidth={borderSize > 0 ? borderSize : 2}
                             strokeDasharray={tool === 'text' ? "5,5" : (borderSize === 0 ? "5,5" : undefined)}
                         />
                     )}
@@ -650,6 +763,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                     />
                 )}
             </div>
+            )}
         </div>
     </div>
   );
