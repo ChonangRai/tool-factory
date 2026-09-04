@@ -72,15 +72,18 @@ const PageGrid = ({ pages, onReorder, onRotate, onRemove, onEdit, onAdd }: PageG
           ))}
 
           {onAdd && (
-            <div
+            <button
+              type="button"
               onClick={onAdd}
-              className="factory-card aspect-[3/4] flex flex-col items-center justify-center gap-3 border-2 border-dashed border-muted-foreground/25 bg-muted/50 text-muted-foreground transition-all hover:bg-muted hover:border-primary/50 hover:text-primary cursor-pointer"
+              // h-full (not a fixed aspect) so it matches the height of the
+              // page cards beside it, which are thumbnail + filename row.
+              className="factory-card focus-ring h-full min-h-[200px] w-full flex flex-col items-center justify-center gap-3 border-2 border-dashed border-muted-foreground/25 bg-muted/50 text-muted-foreground transition-all hover:bg-muted hover:border-primary/50 hover:text-primary cursor-pointer"
             >
               <div className="h-12 w-12 rounded-full bg-background flex items-center justify-center shadow-sm">
-                <Plus className="h-6 w-6" />
+                <Plus className="h-6 w-6" aria-hidden="true" />
               </div>
               <span className="font-medium">Add more PDFs</span>
-            </div>
+            </button>
           )}
         </div>
       </SortableContext>

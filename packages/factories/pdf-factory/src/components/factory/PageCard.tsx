@@ -83,10 +83,12 @@ const PageCard = ({ pageNumber, rotation, file, onRotate, onRemove, onEdit, isDr
       </div>
 
       {/* Thumbnail Container */}
-      <div 
-        className="relative aspect-[3/4] w-full overflow-hidden bg-secondary flex items-center justify-center cursor-pointer"
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label={file ? `Open ${file.name} in the editor` : `Open page ${pageNumber} in the editor`}
+        className="focus-ring relative aspect-[3/4] w-full overflow-hidden bg-secondary flex items-center justify-center cursor-pointer"
         style={{ transform: `rotate(${rotation}deg)` }}
-        onClick={onEdit} 
       >
         {file ? (
            <>
@@ -110,8 +112,8 @@ const PageCard = ({ pageNumber, rotation, file, onRotate, onRemove, onEdit, isDr
              <div className="h-2 w-full rounded bg-muted-foreground/20" />
           </div>
         )}
-        
-      </div>
+
+      </button>
 
       {/* Footer Info */}
       <div className="flex flex-col border-t border-border px-3 py-2 text-xs">
@@ -132,26 +134,30 @@ const PageCard = ({ pageNumber, rotation, file, onRotate, onRemove, onEdit, isDr
         }`}
       >
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onRotate();
           }}
-          className="factory-icon-btn"
+          className="factory-icon-btn focus-ring"
           title="Rotate 90°"
+          aria-label={file ? `Rotate ${file.name} 90 degrees` : 'Rotate 90 degrees'}
         >
-          <RotateCw className="h-4 w-4" />
+          <RotateCw className="h-4 w-4" aria-hidden="true" />
         </button>
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
-            if (window.confirm("Are you sure you want to delete this page? This action cannot be undone.")) {
+            if (window.confirm(`Remove ${file?.name ?? 'this page'}? This cannot be undone.`)) {
               onRemove();
             }
           }}
-          className="factory-icon-btn destructive bg-destructive/10 text-destructive hover:bg-destructive hover:text-white"
-          title="Remove file"
+          className="factory-icon-btn destructive focus-ring bg-destructive/10 text-destructive hover:bg-destructive hover:text-white"
+          title="Remove"
+          aria-label={file ? `Remove ${file.name}` : 'Remove page'}
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
     </div>

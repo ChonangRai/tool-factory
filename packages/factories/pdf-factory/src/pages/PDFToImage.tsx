@@ -1,11 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
 import JSZip from 'jszip';
-import { Download, ImageIcon, Loader2 } from 'lucide-react';
+import { Download, ImageIcon, Loader2, ShieldCheck } from 'lucide-react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import pdfjsLib from '@/lib/pdfWorker';
 import { validatePDFFiles } from '@/lib/pdfValidation';
 import { downloadBlob } from '@/lib/download';
 import Header from '@/components/factory/Header';
+import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -171,107 +172,129 @@ const PDFToImage = () => {
   return (
     <div className="flex h-screen flex-col bg-background">
       <Header />
-      <main className="flex-1 overflow-y-auto px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl space-y-6">
-          <div>
-            <h1 className="text-lg font-medium text-foreground">PDF to Image</h1>
-            <p className="text-sm text-muted-foreground">Upload a PDF and export pages as PNG or JPEG images.</p>
-          </div>
+      <main className="flex-1 overflow-y-auto">
+        <div className="page-shell space-y-6 py-6 sm:py-8">
+          <PageHeader
+            title="PDF to Image"
+            description="Export pages as PNG or JPEG images. Everything is rendered in your browser."
+            backTo={{ href: '/factory', label: 'PDF Workspace' }}
+            meta={file && !isLoadingDoc ? `${file.name} · ${numPages} ${numPages === 1 ? 'page' : 'pages'}` : undefined}
+            actions={
+              file && !isLoadingDoc ? (
+                <Button variant="outline" size="sm" onClick={handleReset}>
+                  Choose a different PDF
+                </Button>
+              ) : undefined
+            }
+          />
 
           <UploadZone onUpload={handleUpload} onRejected={handleRejected} hasFiles={isLoadingDoc || !!file}>
             {() => (
               <>
                 {isLoadingDoc && (
                   <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
-                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" />
                     <p>Opening PDF…</p>
                   </div>
                 )}
 
                 {!isLoadingDoc && file && (
                   <div className="space-y-6">
-                    <div className="flex flex-wrap items-center justify-between gap-4">
-                      <div>
-                        <h2 className="text-lg font-medium text-foreground">{file.name}</h2>
-                        <p className="text-sm text-muted-foreground">
-                          {numPages} page{numPages === 1 ? '' : 's'}
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={handleReset}>
-                        Choose a different PDF
-                      </Button>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-6 rounded-xl border border-border bg-card p-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">Format</span>
-                        {(['png', 'jpeg'] as ImageFormat[]).map((f) => (
-                          <Button
-                            key={f}
-                            size="sm"
-                            variant={format === f ? 'default' : 'outline'}
-                            onClick={() => setFormat(f)}
-                          >
-                            {f.toUpperCase()}
-                          </Button>
-                        ))}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-foreground">Quality</span>
-                        {(Object.keys(QUALITY_PRESETS) as QualityKey[]).map((key) => (
-                          <Button
-                            key={key}
-                            size="sm"
-                            variant={quality === key ? 'default' : 'outline'}
-                            onClick={() => setQuality(key)}
-                            title={QUALITY_PRESETS[key].hint}
-                          >
-                            {QUALITY_PRESETS[key].label}
-                          </Button>
-                        ))}
-                      </div>
-
-                      <div className="ml-auto flex items-center gap-3">
-                        {progress && (
-                          <div className="flex w-40 items-center gap-2">
-                            <Progress value={(progress.current / progress.total) * 100} />
-                            <span className="shrink-0 text-xs text-muted-foreground">
-                              {progress.current}/{progress.total}
+                    {/* Export settings */}
+                    <div className="rounded-xl border border-border bg-card p-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                        <div className="flex flex-wrap gap-6">
+                          <div>
+                            <span id="format-label" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Format
                             </span>
+                            <div className="flex gap-2" role="group" aria-labelledby="format-label">
+                              {(['png', 'jpeg'] as ImageFormat[]).map((f) => (
+                                <Button
+                                  key={f}
+                                  size="sm"
+                                  variant={format === f ? 'default' : 'outline'}
+                                  onClick={() => setFormat(f)}
+                                  aria-pressed={format === f}
+                                >
+                                  {f.toUpperCase()}
+                                </Button>
+                              ))}
+                            </div>
                           </div>
-                        )}
-                        <Button onClick={handleExportAll} disabled={isExporting}>
-                          {isExporting ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            <Download className="mr-2 h-4 w-4" />
-                          )}
-                          {numPages === 1 ? 'Download Image' : 'Download All'}
-                        </Button>
-                      </div>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                      {thumbnails.map((thumb, index) => (
-                        <div key={index} className="factory-card group relative aspect-[3/4]">
-                          <img
-                            src={thumb}
-                            alt={`Page ${index + 1}`}
-                            className="h-full w-full bg-secondary object-contain"
-                          />
-                          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-card/95 px-2 py-1.5 text-xs">
-                            <span className="font-medium text-foreground">Page {index + 1}</span>
-                            <button
-                              onClick={() => handleExportPage(index + 1)}
-                              className="factory-icon-btn"
-                              title={`Download page ${index + 1}`}
-                            >
-                              <Download className="h-3.5 w-3.5" />
-                            </button>
+                          <div>
+                            <span id="quality-label" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Quality
+                            </span>
+                            <div className="flex flex-wrap gap-2" role="group" aria-labelledby="quality-label">
+                              {(Object.keys(QUALITY_PRESETS) as QualityKey[]).map((key) => (
+                                <Button
+                                  key={key}
+                                  size="sm"
+                                  variant={quality === key ? 'default' : 'outline'}
+                                  onClick={() => setQuality(key)}
+                                  title={QUALITY_PRESETS[key].hint}
+                                  aria-pressed={quality === key}
+                                >
+                                  {QUALITY_PRESETS[key].label}
+                                </Button>
+                              ))}
+                            </div>
                           </div>
                         </div>
-                      ))}
+
+                        <div className="flex items-center gap-3">
+                          {progress && (
+                            <div className="flex w-40 items-center gap-2">
+                              <Progress
+                                value={(progress.current / progress.total) * 100}
+                                aria-label="Export progress"
+                              />
+                              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                                {progress.current}/{progress.total}
+                              </span>
+                            </div>
+                          )}
+                          <Button onClick={handleExportAll} disabled={isExporting} className="w-full lg:w-auto">
+                            {isExporting ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                            ) : (
+                              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+                            )}
+                            {numPages === 1 ? 'Download image' : `Download all ${numPages} pages`}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                        Pages
+                      </h2>
+                      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                        {thumbnails.map((thumb, index) => (
+                          <div key={index} className="factory-card group relative aspect-[3/4]">
+                            <img
+                              src={thumb}
+                              alt={`Page ${index + 1}`}
+                              className="h-full w-full bg-secondary object-contain"
+                            />
+                            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-card/95 px-2 py-1.5 text-xs">
+                              <span className="font-medium text-foreground">Page {index + 1}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleExportPage(index + 1)}
+                                className="factory-icon-btn focus-ring"
+                                title={`Download page ${index + 1}`}
+                                aria-label={`Download page ${index + 1} as ${format.toUpperCase()}`}
+                              >
+                                <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -280,9 +303,15 @@ const PDFToImage = () => {
           </UploadZone>
 
           {!file && !isLoadingDoc && (
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <ImageIcon className="h-4 w-4" />
-              <span>Each page is exported as a separate image.</span>
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2">
+                <ImageIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                Each page becomes a separate image
+              </span>
+              <span className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+                Rendered locally — nothing is uploaded
+              </span>
             </div>
           )}
         </div>

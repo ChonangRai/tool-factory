@@ -121,6 +121,26 @@
 }
 
 @layer components {
+  /* Shared interaction primitives */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+    --tw-ring-offset-color: hsl(var(--background));
+  }
+
+  .interactive-card {
+    @apply rounded-xl border border-border bg-card transition-all duration-200;
+  }
+
+  .interactive-card:hover {
+    border-color: hsl(var(--primary) / 0.4);
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Consistent page width for tool pages and marketing sections */
+  .page-shell {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+
   /* Factory Upload Zone */
   .factory-upload-zone {
     @apply relative rounded-xl border-2 border-dashed transition-all duration-300 ease-out;
@@ -178,7 +198,7 @@
 
   /* Factory Icon Button */
   .factory-icon-btn {
-    @apply flex items-center justify-center rounded-lg p-2 transition-all duration-150;
+    @apply flex min-h-9 min-w-9 items-center justify-center rounded-lg p-2 transition-all duration-150;
     background: hsl(var(--background) / 0.9);
     color: hsl(var(--muted-foreground));
   }

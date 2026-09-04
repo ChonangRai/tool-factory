@@ -57,16 +57,16 @@ const UploadZone = ({
            {children && children({ open })}
         </div>
       ) : (
-        <div 
+        <div
           className="flex flex-col items-center justify-center gap-4 text-center w-full"
         >
           {/* Icon Container */}
           <div className={`relative transition-transform duration-300 ${isDragActive ? 'scale-110' : ''}`}>
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
               {isDragActive ? (
-                <FileText className="h-8 w-8 text-primary" />
+                <FileText className="h-8 w-8 text-primary" aria-hidden="true" />
               ) : (
-                <Upload className="h-8 w-8 text-primary" />
+                <Upload className="h-8 w-8 text-primary" aria-hidden="true" />
               )}
             </div>
             {/* Pulse ring when active */}
@@ -81,12 +81,24 @@ const UploadZone = ({
               {isDragActive ? 'Release to upload' : dropLabel}
             </p>
             <p className="text-sm text-muted-foreground">
-              or click to upload
+              Drag files here, or use the button below
             </p>
           </div>
 
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              open();
+            }}
+            className="focus-ring inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+          >
+            <Upload className="h-4 w-4" aria-hidden="true" />
+            Choose files
+          </button>
+
           {/* Supported formats */}
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-1 flex items-center gap-2">
             {formatLabels.map((label) => (
               <span key={label} className="rounded-md bg-secondary px-2 py-1 text-xs font-medium text-secondary-foreground">
                 {label}

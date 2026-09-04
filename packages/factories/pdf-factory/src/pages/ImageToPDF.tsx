@@ -10,10 +10,11 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { Download, FileOutput, Loader2, Trash2 } from 'lucide-react';
+import { Download, FileOutput, Loader2, ShieldCheck, Trash2 } from 'lucide-react';
 import { validateImageFiles, ValidatedImage } from '@/lib/imageValidation';
 import { downloadBlob } from '@/lib/download';
 import Header from '@/components/factory/Header';
+import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
 import { SortablePageCard } from '@/components/factory/SortablePageCard';
 import { Button } from '@/components/ui/button';
@@ -177,12 +178,18 @@ const ImageToPDF = () => {
   return (
     <div className="flex h-screen flex-col bg-background">
       <Header />
-      <main className="flex-1 overflow-y-auto px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-7xl space-y-6">
-          <div>
-            <h1 className="text-lg font-medium text-foreground">Image to PDF</h1>
-            <p className="text-sm text-muted-foreground">Combine JPEG and PNG images into a single PDF document.</p>
-          </div>
+      <main className="flex-1 overflow-y-auto">
+        <div className="page-shell space-y-6 py-6 sm:py-8">
+          <PageHeader
+            title="Image to PDF"
+            description="Combine JPEG and PNG images into one PDF, in the order you choose."
+            backTo={{ href: '/factory', label: 'PDF Workspace' }}
+            meta={
+              images.length > 0
+                ? `${images.length} ${images.length === 1 ? 'image' : 'images'} · 1 page each`
+                : undefined
+            }
+          />
 
           <UploadZone
             onUpload={handleUpload}
@@ -190,62 +197,69 @@ const ImageToPDF = () => {
             hasFiles={images.length > 0}
             accept={IMAGE_ACCEPT}
             formatLabels={['JPEG', 'PNG']}
-            dropLabel="Drop your images into the factory"
+            dropLabel="Drop your images here"
           >
             {({ open }) => (
               <div className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <h2 className="text-lg font-medium text-foreground">Assembly Line</h2>
-                    <span className="border-l border-border pl-4 text-sm text-muted-foreground">
-                      {images.length} image{images.length === 1 ? '' : 's'}
-                    </span>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={open}>
-                    Add more images
-                  </Button>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-6 rounded-xl border border-border bg-card p-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">Page size</span>
-                    <Button
-                      size="sm"
-                      variant={pageMode === 'fitToA4' ? 'default' : 'outline'}
-                      onClick={() => setPageMode('fitToA4')}
-                      title="Place each image on a standard A4 page"
-                    >
-                      Fit image to A4
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={pageMode === 'fitToImage' ? 'default' : 'outline'}
-                      onClick={() => setPageMode('fitToImage')}
-                      title="Size each page to match its image"
-                    >
-                      Fit page to image
-                    </Button>
-                  </div>
-
-                  <div className="ml-auto flex items-center gap-3">
-                    {progress && (
-                      <div className="flex w-40 items-center gap-2">
-                        <Progress value={(progress.current / progress.total) * 100} />
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {progress.current}/{progress.total}
-                        </span>
+                {/* Export settings */}
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <span id="page-size-label" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Page size
+                      </span>
+                      <div className="flex flex-wrap gap-2" role="group" aria-labelledby="page-size-label">
+                        <Button
+                          size="sm"
+                          variant={pageMode === 'fitToA4' ? 'default' : 'outline'}
+                          onClick={() => setPageMode('fitToA4')}
+                          title="Place each image on a standard A4 page"
+                          aria-pressed={pageMode === 'fitToA4'}
+                        >
+                          Fit image to A4
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={pageMode === 'fitToImage' ? 'default' : 'outline'}
+                          onClick={() => setPageMode('fitToImage')}
+                          title="Size each page to match its image"
+                          aria-pressed={pageMode === 'fitToImage'}
+                        >
+                          Fit page to image
+                        </Button>
                       </div>
-                    )}
-                    <Button onClick={handleExport} disabled={isExporting || images.length === 0}>
-                      {isExporting ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Download className="mr-2 h-4 w-4" />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      {progress && (
+                        <div className="flex w-40 items-center gap-2">
+                          <Progress
+                            value={(progress.current / progress.total) * 100}
+                            aria-label="Export progress"
+                          />
+                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                            {progress.current}/{progress.total}
+                          </span>
+                        </div>
                       )}
-                      Create PDF
-                    </Button>
+                      <Button variant="outline" onClick={open}>
+                        Add more images
+                      </Button>
+                      <Button onClick={handleExport} disabled={isExporting || images.length === 0}>
+                        {isExporting ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+                        )}
+                        Create PDF
+                      </Button>
+                    </div>
                   </div>
                 </div>
+
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  Pages — drag to reorder
+                </h2>
 
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                   <SortableContext items={images.map((i) => i.id)} strategy={rectSortingStrategy}>
@@ -271,11 +285,13 @@ const ImageToPDF = () => {
                                 className="h-full w-full bg-secondary object-contain"
                               />
                               <button
+                                type="button"
                                 onClick={() => handleRemove(item.id)}
-                                className="factory-icon-btn destructive absolute right-2 top-2 bg-destructive/10 text-destructive opacity-100 hover:bg-destructive hover:text-white sm:opacity-0 sm:group-hover:opacity-100"
+                                className="factory-icon-btn destructive focus-ring absolute right-2 top-2 bg-destructive/10 text-destructive opacity-100 hover:bg-destructive hover:text-white sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
                                 title="Remove image"
+                                aria-label={`Remove ${item.file.name}`}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
                               </button>
                               <div className="flex items-center justify-between border-t border-border px-3 py-2 text-xs">
                                 <span className="max-w-[120px] truncate font-medium text-foreground" title={item.file.name}>
@@ -295,9 +311,15 @@ const ImageToPDF = () => {
           </UploadZone>
 
           {images.length === 0 && (
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <FileOutput className="h-4 w-4" />
-              <span>Each image becomes one page of the resulting PDF.</span>
+            <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+              <span className="flex items-center gap-2">
+                <FileOutput className="h-4 w-4 shrink-0" aria-hidden="true" />
+                Each image becomes one page
+              </span>
+              <span className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+                Built locally — nothing is uploaded
+              </span>
             </div>
           )}
         </div>

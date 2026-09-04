@@ -3,11 +3,11 @@ import { usePDF, PDFPageItem } from '@/hooks/usePDF';
 import { validatePDFFiles } from '@/lib/pdfValidation';
 import { downloadBlob } from '@/lib/download';
 import Header from '@/components/factory/Header';
+import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
 import PageGrid from '@/components/factory/PageGrid';
-import EmptyState from '@/components/factory/EmptyState';
 import { toast } from '@/hooks/use-toast';
-import { Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, MousePointerSquareDashed, Scissors } from 'lucide-react';
 import PDFPageEditor from '@/components/factory/PDFPageEditor';
 import SidebarList from '@/components/factory/SidebarList';
 
@@ -31,8 +31,8 @@ const Index = () => {
 
       setPdfItems(prev => [...prev, ...newItems]);
       toast({
-        title: "PDFs uploaded",
-        description: `${valid.length} file(s) added to the factory`,
+        title: "PDFs added",
+        description: `${valid.length} file(s) added to the workspace`,
       });
     }
 
@@ -57,7 +57,7 @@ const Index = () => {
     setPdfItems(prevItems => {
       // Create a map for O(1) lookup
       const itemMap = new Map(prevItems.map(item => [item.id, item]));
-      
+
       const reordered = newItems
         .map(uiItem => {
           const original = itemMap.get(uiItem.id);
@@ -103,8 +103,8 @@ const Index = () => {
   }, []);
 
   const handleRotate = useCallback((id: string) => {
-    setPdfItems(prev => prev.map(item => 
-      item.id === id 
+    setPdfItems(prev => prev.map(item =>
+      item.id === id
         ? { ...item, rotation: (item.rotation + 90) % 360 }
         : item
     ));
@@ -145,7 +145,7 @@ const Index = () => {
         const newFile = new File([blob], `${item.file.name.replace('.pdf', '')}-page-${index + 1}.pdf`, {
           type: 'application/pdf'
         });
-        
+
         newItems.push({
           id: `${newFile.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           file: newFile,
@@ -157,8 +157,8 @@ const Index = () => {
 
     setPdfItems(newItems);
     toast({
-      title: "Pages Extracted",
-      description: "All pages have been separated."
+      title: "Pages extracted",
+      description: "Every page is now a separate item you can reorder."
     });
   }, [pdfItems, splitPDF]);
 
@@ -179,8 +179,29 @@ const Index = () => {
     setViewMode('split');
   };
 
-  const exportLabel = pdfItems.length >= 2 ? 'Merge & Export' : 'Export PDF';
+  const hasFiles = pdfItems.length > 0;
+  const totalPages = pdfItems.reduce((sum, item) => sum + item.pageCount, 0);
+  const exportLabel = pdfItems.length >= 2 ? 'Merge & export' : 'Export PDF';
   const selectedItem = pdfItems.find(i => i.id === selectedPageId) || null;
+
+  const countSummary = `${pdfItems.length} ${pdfItems.length === 1 ? 'file' : 'files'} · ${totalPages} ${
+    totalPages === 1 ? 'page' : 'pages'
+  }`;
+
+  const exportButton = (
+    <button
+      onClick={handleExport}
+      disabled={isProcessing || !hasFiles}
+      className="focus-ring inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none"
+    >
+      {isProcessing ? (
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+      ) : (
+        <Download className="h-4 w-4" aria-hidden="true" />
+      )}
+      {isProcessing ? 'Processing…' : exportLabel}
+    </button>
+  );
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -188,135 +209,132 @@ const Index = () => {
 
       <main className="flex-1 overflow-hidden">
         {viewMode === 'grid' ? (
-             /* Standard Grid Layout */
-             <div className="h-full overflow-y-auto px-4 py-8 sm:px-6 lg:px-8">
-                <UploadZone onUpload={handleUpload} onRejected={handleRejected} hasFiles={pdfItems.length > 0}>
-                    {({ open }) => (
+          <div className="h-full overflow-y-auto">
+            <div className="page-shell py-6 sm:py-8">
+              <PageHeader
+                title="PDF Workspace"
+                description={
+                  hasFiles
+                    ? undefined
+                    : 'Add PDFs to merge, split, reorder, rotate or annotate them — all in your browser.'
+                }
+                meta={hasFiles ? countSummary : undefined}
+                actions={
+                  hasFiles ? (
                     <>
-                        {pdfItems.length > 0 ? (
-                        <div className="mx-auto max-w-7xl">
-                            <div className="mb-6 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <h2 className="text-lg font-medium text-foreground">Assembly Line</h2>
-                                <span className="text-sm text-muted-foreground border-l pl-4 border-border">
-                                {pdfItems.length} {pdfItems.length === 1 ? 'file' : 'files'}
-                                </span>
-                            </div>
-                            </div>
-                            
-                            <PageGrid 
-                            pages={uiPages} 
-                            onReorder={handleReorder}
-                            onRotate={handleRotate}
-                            onRemove={handleRemove}
-                            onEdit={handleEdit}
-                            onAdd={open}
-                            />
-
-                            {/* Action Buttons */}
-                            <div className="flex flex-wrap justify-end items-center mt-8 pt-8 border-t border-dashed border-border gap-4">
-                                <button
-                                    onClick={handleSplitMode}
-                                    disabled={isProcessing}
-                                    className="flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-foreground border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
-                                >
-                                    {isProcessing ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                        <div className="flex gap-0.5">
-                                            <div className="h-3 w-2 border border-current rounded-[1px]" />
-                                            <div className="h-3 w-2 border border-current rounded-[1px]" />
-                                        </div>
-                                    )}
-                                    <span>{isProcessing ? 'Processing...' : 'Split & Rearrange'}</span>
-                                </button>
-
-                                {pdfItems.length >= 1 && (
-                                    <button
-                                    onClick={handleExport}
-                                    disabled={isProcessing}
-                                    className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none"
-                                    >
-                                    {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                                    <span>{isProcessing ? 'Processing...' : exportLabel}</span>
-                                    </button>
-                                )}
-                            </div>
-                        </div>
+                      <button
+                        onClick={handleSplitMode}
+                        disabled={isProcessing}
+                        className="focus-ring inline-flex items-center gap-2 rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-secondary disabled:opacity-50 disabled:pointer-events-none"
+                      >
+                        {isProcessing ? (
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                         ) : (
-                        <EmptyState />
+                          <Scissors className="h-4 w-4" aria-hidden="true" />
                         )}
+                        Split into pages
+                      </button>
+                      {exportButton}
                     </>
-                    )}
-                </UploadZone>
-             </div>
-        ) : (
-            /* Split & Rearrange View */
-            <div className="flex h-full flex-col sm:flex-row">
-                {/* Sidebar */}
-                <div className="flex max-h-56 w-full flex-col border-b border-border bg-muted/10 sm:h-full sm:w-64 sm:max-h-none sm:border-b-0 sm:border-r">
-                    <div className="p-4 border-b border-border bg-background">
-                         <h3 className="font-medium text-sm">Pages</h3>
-                         <p className="text-xs text-muted-foreground">{pdfItems.length} {pdfItems.length === 1 ? 'file' : 'files'}</p>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4">
-                        <SidebarList
-                            pages={uiPages}
-                            selectedId={selectedPageId}
-                            onSelect={setSelectedPageId}
-                            onReorder={handleReorder}
-                        />
-                    </div>
-                    <div className="p-4 border-t border-border bg-background space-y-2">
-                        {pdfItems.length >= 1 && (
-                            <button
-                                onClick={handleExport}
-                                disabled={isProcessing}
-                                className="w-full justify-center flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50 disabled:pointer-events-none"
-                            >
-                                {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                                {isProcessing ? 'Processing...' : exportLabel}
-                            </button>
-                        )}
-                        <button
-                           onClick={() => setViewMode('grid')}
-                           className="w-full justify-center flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-foreground bg-secondary hover:bg-secondary/80 transition-colors"
-                        >
-                            Back to Grid
-                        </button>
-                    </div>
-                </div>
+                  ) : undefined
+                }
+              />
 
-                {/* Main Editor */}
-                <div className="flex-1 min-h-0 bg-background relative flex flex-col">
-                    {selectedPageId ? (
-                        <PDFPageEditor
-                          file={selectedItem?.file || null}
-                          onSave={(newFile) => handleSaveEdit(newFile, selectedPageId)}
-                          // Rotate/delete act on the whole file, so only expose them
-                          // here when the file is a single page -- for a multi-page
-                          // document they'd otherwise silently apply to every page.
-                          onRotate={selectedItem?.pageCount === 1 ? () => handleRotate(selectedPageId) : undefined}
-                          onDelete={selectedItem?.pageCount === 1 ? () => {
-                              handleRemove(selectedPageId);
-                              setSelectedPageId(null);
-                          } : undefined}
-                          className="h-full"
-                        />
-                    ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center bg-muted/10">
-                            <div className="h-16 w-16 mb-4 rounded-2xl bg-muted flex items-center justify-center">
-                                <div className="flex gap-1">
-                                    <div className="h-6 w-4 border-2 border-current rounded-sm" />
-                                    <div className="h-6 w-4 border-2 border-dashed border-current rounded-sm" />
-                                </div>
-                            </div>
-                            <h3 className="font-medium text-lg text-foreground">Select a page</h3>
-                            <p>Click a page from the sidebar to edit, rotate, or delete it.</p>
-                        </div>
-                    )}
-                </div>
+              <div className="mt-6">
+                <UploadZone onUpload={handleUpload} onRejected={handleRejected} hasFiles={hasFiles}>
+                  {({ open }) => (
+                    <>
+                      <h2 className="sr-only">Files in this workspace</h2>
+                      <PageGrid
+                        pages={uiPages}
+                        onReorder={handleReorder}
+                        onRotate={handleRotate}
+                        onRemove={handleRemove}
+                        onEdit={handleEdit}
+                        onAdd={open}
+                      />
+
+                      <p className="mt-6 flex items-center gap-2 border-t border-dashed border-border pt-4 text-sm text-muted-foreground">
+                        <MousePointerSquareDashed className="h-4 w-4 shrink-0" aria-hidden="true" />
+                        Click a file to annotate its pages, drag the handle to reorder, or split it into
+                        individual pages.
+                      </p>
+                    </>
+                  )}
+                </UploadZone>
+              </div>
             </div>
+          </div>
+        ) : (
+          /* Page-level editing view */
+          <div className="flex h-full flex-col">
+            {/* Document-level toolbar */}
+            <div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 sm:px-6">
+              <div className="flex min-w-0 items-center gap-3">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">Back to files</span>
+                </button>
+                <span className="hidden h-5 w-px bg-border sm:block" />
+                <div className="min-w-0">
+                  <h1 className="truncate text-sm font-semibold text-foreground">Editor</h1>
+                  <p className="truncate text-xs text-muted-foreground">{countSummary}</p>
+                </div>
+              </div>
+
+              {exportButton}
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+              {/* Page list */}
+              <div className="flex max-h-56 w-full flex-col border-b border-border bg-muted/10 sm:h-full sm:max-h-none sm:w-64 sm:border-b-0 sm:border-r">
+                <h2 className="border-b border-border bg-background px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Pages
+                </h2>
+                <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+                  <SidebarList
+                    pages={uiPages}
+                    selectedId={selectedPageId}
+                    onSelect={setSelectedPageId}
+                    onReorder={handleReorder}
+                  />
+                </div>
+              </div>
+
+              {/* Editor */}
+              <div className="relative flex min-h-0 flex-1 flex-col bg-background">
+                {selectedPageId ? (
+                  <PDFPageEditor
+                    file={selectedItem?.file || null}
+                    onSave={(newFile) => handleSaveEdit(newFile, selectedPageId)}
+                    // Rotate/delete act on the whole file, so only expose them
+                    // here when the file is a single page -- for a multi-page
+                    // document they'd otherwise silently apply to every page.
+                    onRotate={selectedItem?.pageCount === 1 ? () => handleRotate(selectedPageId) : undefined}
+                    onDelete={selectedItem?.pageCount === 1 ? () => {
+                      handleRemove(selectedPageId);
+                      setSelectedPageId(null);
+                    } : undefined}
+                    className="h-full"
+                  />
+                ) : (
+                  <div className="flex flex-1 flex-col items-center justify-center bg-muted/10 p-8 text-center">
+                    <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted">
+                      <MousePointerSquareDashed className="h-7 w-7 text-muted-foreground" aria-hidden="true" />
+                    </div>
+                    <h3 className="text-lg font-medium text-foreground">Select a page to edit</h3>
+                    <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                      Choose a page from the list to annotate, rotate or delete it. Drag pages in the list to
+                      change their order.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>
