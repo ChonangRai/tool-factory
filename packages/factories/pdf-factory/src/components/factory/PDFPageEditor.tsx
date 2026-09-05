@@ -567,7 +567,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
 
           {onRotate && (
             <div className="flex items-center gap-1.5">
-              <Button variant="ghost" size="sm" onClick={onRotate} title="Rotate page (applied when you export -- the preview here stays unrotated)">
+              <Button variant="ghost" size="sm" onClick={onRotate} title="Rotate page (applied when you export -- the page card shows the turn; this editor preview stays unrotated so annotations keep their placement)">
                   <RotateCw className="h-4 w-4" />
               </Button>
               <span className="hidden text-xs text-muted-foreground sm:inline">Applied on export</span>
