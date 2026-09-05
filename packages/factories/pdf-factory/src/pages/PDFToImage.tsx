@@ -5,6 +5,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import pdfjsLib from '@/lib/pdfWorker';
 import { validatePDFFiles } from '@/lib/pdfValidation';
 import { downloadBlob } from '@/lib/download';
+import { yieldToBrowser } from '@/lib/scheduling';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
@@ -38,7 +39,12 @@ const renderPageToBlob = async (
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Canvas not supported');
 
-  await page.render({ canvasContext: context, viewport } as any).promise;
+  // 'print' intent renders the same flattened page, but pdf.js only schedules
+  // its continuations on requestAnimationFrame for 'display' -- and a
+  // background tab stops firing that, which would park a multi-page export
+  // mid-way. Thumbnails below stay on the default intent: they are on-screen
+  // preview work that only runs while the tab is visible anyway.
+  await page.render({ canvasContext: context, viewport, canvas, intent: 'print' }).promise;
 
   const mime = format === 'png' ? 'image/png' : 'image/jpeg';
   const blob = await new Promise<Blob>((resolve, reject) => {
@@ -155,7 +161,7 @@ const PDFToImage = () => {
         zip.file(`${baseName(file.name)}-page-${i}.${ext}`, blob);
         setProgress({ current: i, total: numPages });
         // Yield to the browser so the progress UI can repaint between pages.
-        await new Promise((resolve) => requestAnimationFrame(resolve));
+        await yieldToBrowser();
       }
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       downloadBlob(zipBlob, `${baseName(file.name)}-images.zip`);

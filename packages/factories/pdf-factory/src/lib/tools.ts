@@ -42,22 +42,36 @@ export const CONVERTER_TOOLS: Tool[] = [
   },
 ];
 
-export const UPCOMING_TOOLS: Tool[] = [
+export const OPTIMIZE_TOOLS: Tool[] = [
   {
     id: 'compress',
     name: 'Compress PDF',
-    description: 'Reduce file size for easier sharing.',
+    description: 'Make a PDF smaller, keeping your original when it would not help.',
     icon: Minimize2,
-    status: 'soon',
-  },
-  {
-    id: 'protect',
-    name: 'Protect PDF',
-    description: 'Add password protection to a document.',
-    icon: Lock,
-    status: 'soon',
+    path: '/factory/compress',
+    capabilities: ['Optimise structure', 'Compress scans'],
+    status: 'live',
   },
 ];
 
+export const SECURE_TOOLS: Tool[] = [
+  {
+    id: 'protect',
+    name: 'Protect PDF',
+    description: 'Require a password to open a document, encrypted on your device.',
+    icon: Lock,
+    path: '/factory/protect',
+    capabilities: ['AES-256', 'Password to open'],
+    status: 'live',
+  },
+];
+
+export const UPCOMING_TOOLS: Tool[] = [];
+
 /** Every routable destination, for the header navigation. */
-export const NAV_TOOLS: Tool[] = [WORKSPACE_TOOL, ...CONVERTER_TOOLS];
+export const NAV_TOOLS: Tool[] = [
+  WORKSPACE_TOOL,
+  ...CONVERTER_TOOLS,
+  ...OPTIMIZE_TOOLS,
+  ...SECURE_TOOLS,
+];

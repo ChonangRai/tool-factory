@@ -74,17 +74,21 @@ const Header = () => {
                 </DropdownMenuItem>
               ))}
 
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                Coming soon
-              </DropdownMenuLabel>
+              {UPCOMING_TOOLS.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                    Coming soon
+                  </DropdownMenuLabel>
 
-              {UPCOMING_TOOLS.map((tool) => (
-                <DropdownMenuItem key={tool.id} disabled className="gap-2">
-                  <tool.icon className="h-4 w-4" aria-hidden="true" />
-                  {tool.name}
-                </DropdownMenuItem>
-              ))}
+                  {UPCOMING_TOOLS.map((tool) => (
+                    <DropdownMenuItem key={tool.id} disabled className="gap-2">
+                      <tool.icon className="h-4 w-4" aria-hidden="true" />
+                      {tool.name}
+                    </DropdownMenuItem>
+                  ))}
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </nav>

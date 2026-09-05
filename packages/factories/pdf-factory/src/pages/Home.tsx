@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, CloudOff, ShieldCheck, Wrench, Zap } from 'lucide-react';
 import Header from '@/components/factory/Header';
 import { FeaturedToolCard, ToolCard } from '@/components/factory/ToolCard';
-import { CONVERTER_TOOLS, UPCOMING_TOOLS, WORKSPACE_TOOL } from '@/lib/tools';
+import { CONVERTER_TOOLS, OPTIMIZE_TOOLS, SECURE_TOOLS, UPCOMING_TOOLS, WORKSPACE_TOOL } from '@/lib/tools';
 
 const trustPoints = [
   {
@@ -93,13 +93,35 @@ const Home = () => {
           </div>
 
           <h3 className="mb-3 mt-10 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Coming soon
+            Optimise
           </h3>
           <div className="grid gap-4 sm:grid-cols-2">
-            {UPCOMING_TOOLS.map((tool) => (
+            {OPTIMIZE_TOOLS.map((tool) => (
               <ToolCard key={tool.id} tool={tool} />
             ))}
           </div>
+
+          <h3 className="mb-3 mt-10 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Secure
+          </h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {SECURE_TOOLS.map((tool) => (
+              <ToolCard key={tool.id} tool={tool} />
+            ))}
+          </div>
+
+          {UPCOMING_TOOLS.length > 0 && (
+            <>
+              <h3 className="mb-3 mt-10 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Coming soon
+              </h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {UPCOMING_TOOLS.map((tool) => (
+                  <ToolCard key={tool.id} tool={tool} />
+                ))}
+              </div>
+            </>
+          )}
         </section>
 
         {/* Privacy */}

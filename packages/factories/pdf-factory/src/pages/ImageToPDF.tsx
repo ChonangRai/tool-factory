@@ -13,6 +13,7 @@ import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordi
 import { Download, FileOutput, Loader2, ShieldCheck, Trash2 } from 'lucide-react';
 import { validateImageFiles, ValidatedImage } from '@/lib/imageValidation';
 import { downloadBlob } from '@/lib/download';
+import { yieldToBrowser } from '@/lib/scheduling';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
@@ -160,7 +161,7 @@ const ImageToPDF = () => {
 
         setProgress({ current: i + 1, total: images.length });
         // Yield to the browser so the progress UI can repaint between images.
-        await new Promise((resolve) => requestAnimationFrame(resolve));
+        await yieldToBrowser();
       }
 
       const pdfBytes = await pdfDoc.save();
