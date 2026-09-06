@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from '@/components/ui/card';
@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Loader2, CheckCircle2, Receipt, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import TurnstileGate, { type TurnstileGateHandle } from '@/components/TurnstileGate';
+import { verifyHuman, requestUploadTicket, submitForm as submitViaGate, AnonGateError } from '@/lib/anonGate';
 import { DynamicForm } from '@/components/DynamicForm';
 import { FormField } from '@/types/formFields';
 import { storage } from '@/lib/storage';
@@ -35,6 +37,8 @@ export default function SubmitReceipt() {
   // State for low quality warning dialog
   const [showQualityWarning, setShowQualityWarning] = useState(false);
   const [pendingSubmission, setPendingSubmission] = useState<Record<string, any> | null>(null);
+  const [humanVerified, setHumanVerified] = useState(false);
+  const turnstile = useRef<TurnstileGateHandle>(null);
 
   useEffect(() => {
     if (formId) {
@@ -107,6 +111,24 @@ export default function SubmitReceipt() {
         return;
       }
 
+      // One Turnstile challenge per submission. The token is exchanged
+      // server-side for a short-lived, form-scoped capability that authorises
+      // this submission and its upload tickets, so a multi-file submission is
+      // not challenged once per file. Tokens are single-use, so the widget is
+      // reset once spent.
+      const turnstileToken = turnstile.current?.getToken();
+      if (!turnstileToken) {
+        toast.error('Please complete the verification check first.');
+        return;
+      }
+
+      let capability: string;
+      try {
+        ({ capability } = await verifyHuman(formId, turnstileToken));
+      } finally {
+        turnstile.current?.reset();
+      }
+
       // Handle file uploads
       const fileFields = formFields.filter(f => f.type === 'file');
       const uploadedFiles: any[] = [];
@@ -119,13 +141,7 @@ export default function SubmitReceipt() {
           // -- presented with this exact ticket_id -- can ever attach the
           // resulting object to a submission. Knowing the object path alone
           // (e.g. from a network observation) is not enough to claim it.
-          const { data: ticket, error: ticketError } = await (supabase as any)
-            .rpc('create_upload_ticket', { p_form_id: formId })
-            .single();
-
-          if (ticketError || !ticket) {
-            throw new Error(ticketError?.message || 'Could not start file upload');
-          }
+          const ticket = await requestUploadTicket(formId, capability);
 
           const uploadResult = await storage.uploadFile(file, ticket.path);
 
@@ -167,20 +183,11 @@ export default function SubmitReceipt() {
          if (descField) rpcData.description = formData[descField.id];
       }
 
-      // Use Secure RPC to submit form and link files in one go
-      // This bypasses RLS issues for public users. submit_form now also
-      // mints a one-time receipt_ticket_id bound to this exact submission --
-      // that, not the submission id itself, is what authorizes the
-      // confirmation email.
-      const { data: submitResult, error: submissionError } = await (supabase as any)
-        .rpc('submit_form', {
-          p_form_id: formId,
-          p_data: rpcData,
-          p_files: uploadedFiles
-        })
-        .single();
-
-      if (submissionError) throw submissionError;
+      // The gate calls the same secure submit_form RPC with the service role;
+      // all tenant and storage authority stays in the database. submit_form
+      // still mints the one-time receipt_ticket_id bound to this submission --
+      // that, not the submission id, authorizes the confirmation email.
+      const submitResult = await submitViaGate(formId, capability, rpcData, uploadedFiles);
 
       // Trigger email notification (non-blocking) - IF OPTED IN
       if (sendReceipt && submitResult?.receipt_ticket_id) {
@@ -195,7 +202,15 @@ export default function SubmitReceipt() {
       toast.success('Submission successful!');
     } catch (error: any) {
       console.error('Submission error:', error);
-      toast.error(error.message || 'Failed to submit. Please try again.');
+      if (error instanceof AnonGateError) {
+        // Retryable failures mean the challenge must be solved again; the
+        // widget was already reset above, so the user just re-verifies.
+        toast.error(
+          error.retryable ? `${error.message} Please complete the check and submit again.` : error.message
+        );
+      } else {
+        toast.error(error.message || 'Failed to submit. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -305,7 +320,7 @@ export default function SubmitReceipt() {
           <DynamicForm
             fields={formFields}
             onSubmit={handleSubmit}
-            isSubmitting={loading || validatingImage}
+            isSubmitting={loading || validatingImage || !humanVerified}
           >
             <div className="flex items-center space-x-2 p-2">
               <Checkbox 
@@ -320,6 +335,11 @@ export default function SubmitReceipt() {
                 Send me a confirmation email with my receipt
               </Label>
             </div>
+
+            {/* Required for every public submission, with or without
+                attachments. Solving it once authorises this submission and
+                any upload tickets it needs. */}
+            <TurnstileGate ref={turnstile} onSolved={setHumanVerified} />
           </DynamicForm>
         </div>
 
