@@ -53,7 +53,8 @@ const Index = () => {
     });
   }, []);
 
-  const handleReorder = useCallback((newItems: any[]) => {
+  // Only the ids are read; the grid's own item shape is not this page's concern.
+  const handleReorder = useCallback((newItems: { id: string }[]) => {
     setPdfItems(prevItems => {
       // Create a map for O(1) lookup
       const itemMap = new Map(prevItems.map(item => [item.id, item]));

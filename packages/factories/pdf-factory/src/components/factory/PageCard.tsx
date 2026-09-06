@@ -71,8 +71,9 @@ const PageCard = ({ pageNumber, rotation, file, onRotate, onRemove, onEdit, isDr
         if (context) {
           await page.render({
             canvasContext: context,
-            viewport: viewport,
-          } as any).promise;
+            viewport,
+            canvas,
+          }).promise;
           if (active) setThumbnailGenerated(true);
         }
       } catch (error) {

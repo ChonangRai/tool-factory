@@ -102,11 +102,17 @@ const PDFToImage = () => {
         canvas.height = viewport.height;
         const context = canvas.getContext('2d');
         if (context) {
-          await page.render({ canvasContext: context, viewport } as any).promise;
+          // Same 'print' intent as the export below: it previews exactly what
+          // will be exported, and it keeps pdf.js off requestAnimationFrame,
+          // which a backgrounded tab suspends. Without it, dropping a PDF here
+          // and switching tabs leaves the page stuck on "Opening PDF...".
+          await page.render({ canvasContext: context, viewport, canvas, intent: 'print' }).promise;
           thumbs.push(canvas.toDataURL('image/png'));
         }
         canvas.width = 0;
         canvas.height = 0;
+        page.cleanup();
+        await yieldToBrowser();
       }
 
       pdfRef.current = pdf;

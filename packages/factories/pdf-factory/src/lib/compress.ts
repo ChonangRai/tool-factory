@@ -3,6 +3,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import pdfjsLib from '@/lib/pdfWorker';
 import type { DocumentAnalysis } from '@/lib/pdfAnalysis';
 import { yieldToBrowser } from '@/lib/scheduling';
+import { pdfBlob } from '@/lib/pdfBytes';
 
 /**
  * Two compression strategies, both entirely in-browser:
@@ -59,7 +60,7 @@ const buildResult = (
   const keptOriginal = !compressed || compressed.byteLength >= originalBytes;
   const blob = keptOriginal
     ? original.slice(0, original.size, 'application/pdf')
-    : new Blob([compressed as BlobPart], { type: 'application/pdf' });
+    : pdfBlob(compressed);
   const resultBytes = keptOriginal ? originalBytes : (compressed as Uint8Array).byteLength;
 
   return {

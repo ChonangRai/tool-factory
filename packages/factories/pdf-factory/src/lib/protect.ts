@@ -6,6 +6,8 @@
  * this route's. The rest of the app keeps using plain pdf-lib.
  */
 
+import { pdfBlob } from '@/lib/pdfBytes';
+
 /** Revision 6 hashes at most 127 UTF-8 bytes, silently dropping the rest. */
 export const PASSWORD_MAX_BYTES = 127;
 export const PASSWORD_MIN_LENGTH = 8;
@@ -128,7 +130,7 @@ export const protectPDF = async (file: File, password: string): Promise<ProtectR
     const encrypted = await doc.save();
 
     return {
-      blob: new Blob([encrypted as BlobPart], { type: 'application/pdf' }),
+      blob: pdfBlob(encrypted),
       originalBytes: file.size,
       resultBytes: encrypted.byteLength,
       pageCount,

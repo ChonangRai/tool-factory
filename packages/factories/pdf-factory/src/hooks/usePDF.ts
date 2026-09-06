@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { PDFDocument, degrees } from 'pdf-lib';
+import { pdfBlob } from '@/lib/pdfBytes';
 import { toast } from '@/hooks/use-toast';
 
 export interface PDFPageItem {
@@ -37,7 +38,7 @@ export const usePDF = () => {
       }
 
       const mergedPdfBytes = await mergedPdf.save();
-      const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+      const blob = pdfBlob(mergedPdfBytes);
 
       return blob;
     } catch (error) {
@@ -62,7 +63,7 @@ export const usePDF = () => {
         const [copiedPage] = await newPdf.copyPages(pdf, [i]);
         newPdf.addPage(copiedPage);
         const pdfBytes = await newPdf.save();
-        blobs.push(new Blob([pdfBytes], { type: 'application/pdf' }));
+        blobs.push(pdfBlob(pdfBytes));
       }
 
       return blobs;

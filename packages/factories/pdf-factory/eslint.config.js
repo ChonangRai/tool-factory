@@ -23,4 +23,14 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  {
+    // shadcn/ui components are vendored as-is, and its house style exports a
+    // component alongside its cva variants from one file. Splitting them would
+    // mean editing upstream scaffolding on every update, so the fast-refresh
+    // rule is scoped off here rather than churning those files.
+    files: ["src/components/ui/**/*.{ts,tsx}"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
 );

@@ -13,6 +13,7 @@ import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordi
 import { Download, FileOutput, Loader2, ShieldCheck, Trash2 } from 'lucide-react';
 import { validateImageFiles, ValidatedImage } from '@/lib/imageValidation';
 import { downloadBlob } from '@/lib/download';
+import { pdfBlob } from '@/lib/pdfBytes';
 import { yieldToBrowser } from '@/lib/scheduling';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
@@ -165,7 +166,7 @@ const ImageToPDF = () => {
       }
 
       const pdfBytes = await pdfDoc.save();
-      downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), `images-to-pdf-${Date.now()}.pdf`);
+      downloadBlob(pdfBlob(pdfBytes), `images-to-pdf-${Date.now()}.pdf`);
       toast({ title: 'PDF created', description: `${images.length} image(s) combined into one PDF.` });
     } catch (error) {
       console.error('Failed to build PDF from images', error);

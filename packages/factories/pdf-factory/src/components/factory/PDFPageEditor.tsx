@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import type { PDFDocumentProxy } from 'pdfjs-dist';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import { Button } from '@/components/ui/button';
 import {
   ChevronLeft,
@@ -16,6 +16,34 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import pdfjsLib from '@/lib/pdfWorker';
+import { pdfFile } from '@/lib/pdfBytes';
+
+/** A rectangle in ratio coordinates (0-1) relative to the page. */
+interface RatioRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * The editor draws two kinds of annotation. Both carry a position in ratio
+ * coordinates; only boxes carry a size, which is why the size and style fields
+ * are optional rather than split across two interfaces -- the drawing and
+ * export code reads them uniformly.
+ */
+interface Annotation extends Partial<RatioRect> {
+  type: 'text' | 'rect';
+  x: number;
+  y: number;
+  color: string;
+  opacity?: number;
+  borderColor?: string;
+  borderWidth?: number;
+  text?: string;
+  fontSize?: number;
+  fontFamily?: string;
+}
 
 interface PDFPageEditorProps {
   file: File | null;
@@ -60,32 +88,34 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
   // Annotations are kept per page number (1-indexed, stable for the life of
   // this editing session since pages aren't added/removed/reordered from
   // within the editor itself) so navigating pages never mixes up content.
-  // Loosely typed like the rest of this file's ad-hoc annotation objects.
-  type AnnotationList = any[];
+  type AnnotationList = Annotation[];
   const [annotationsByPage, setAnnotationsByPage] = useState<Record<number, AnnotationList>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [numPages, setNumPages] = useState(1);
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
 
   const annotations = annotationsByPage[currentPage] ?? [];
-  const setAnnotations = (updater: AnnotationList | ((prev: AnnotationList) => AnnotationList)) => {
-    setAnnotationsByPage(prevMap => {
-      const prevForPage = prevMap[currentPage] ?? [];
-      const next = typeof updater === 'function' ? updater(prevForPage) : updater;
-      return { ...prevMap, [currentPage]: next };
-    });
-  };
+  const setAnnotations = useCallback(
+    (updater: AnnotationList | ((prev: AnnotationList) => AnnotationList)) => {
+      setAnnotationsByPage(prevMap => {
+        const prevForPage = prevMap[currentPage] ?? [];
+        const next = typeof updater === 'function' ? updater(prevForPage) : updater;
+        return { ...prevMap, [currentPage]: next };
+      });
+    },
+    [currentPage]
+  );
   const hasAnyAnnotations = Object.values(annotationsByPage).some(a => a.length > 0);
 
   // Handlers for selected item
-  const deleteSelected = () => {
+  const deleteSelected = useCallback(() => {
     if (selectedIndex !== null) {
       setAnnotations(prev => prev.filter((_, idx) => idx !== selectedIndex));
       setSelectedIndex(null);
     }
-  };
+  }, [selectedIndex, setAnnotations]);
 
-  const updateSelectedProperty = (key: string, value: any) => {
+  const updateSelectedProperty = <K extends keyof Annotation>(key: K, value: Annotation[K]) => {
      if (selectedIndex !== null) {
          setAnnotations(prev => {
              const newAnns = [...prev];
@@ -127,10 +157,10 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIndex]);
+  }, [deleteSelected]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 }); // In Ratio coords
-  const [currentRect, setCurrentRect] = useState<any>(null); // In Ratio coords
+  const [currentRect, setCurrentRect] = useState<RatioRect | null>(null);
   const [renderKey, setRenderKey] = useState(0);
 
   // Text draft state
@@ -193,7 +223,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
   // Render the current page to the canvas whenever the page, zoom, or
   // underlying document changes.
   useEffect(() => {
-    let renderTask: any = null;
+    let renderTask: RenderTask | null = null;
     let isActive = true;
     const pdf = pdfRef.current;
 
@@ -218,12 +248,13 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
 
           renderTask = page.render({
             canvasContext: context,
-            viewport: viewport
-          } as any);
+            viewport,
+            canvas,
+          });
 
           await renderTask.promise;
-        } catch (error: any) {
-            if (error?.name === 'RenderingCancelledException') {
+        } catch (error) {
+            if (error instanceof Error && error.name === 'RenderingCancelledException') {
                // Normal cancel behavior
             } else {
                console.error("Error rendering page in editor", error);
@@ -405,7 +436,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
       }
 
       const pdfBytes = await pdfDoc.save();
-      const newFile = new File([pdfBytes], file.name, { type: 'application/pdf' });
+      const newFile = pdfFile(pdfBytes, file.name);
       onSave(newFile);
     } catch (e) {
       console.error("Failed to save annotations", e);
@@ -623,7 +654,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                                             if (tool === 'select') {
                                                e.stopPropagation();
                                                setSelectedIndex(i);
-                                               const pos = getMousePosRatio(e as any);
+                                               const pos = getMousePosRatio(e);
                                                setDragState({
                                                    action: 'move',
                                                    startX: pos.x,
@@ -655,7 +686,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                                                 className="cursor-nwse-resize pointer-events-auto"
                                                 onMouseDown={(e) => {
                                                     e.stopPropagation();
-                                                    const pos = getMousePosRatio(e as any);
+                                                    const pos = getMousePosRatio(e);
                                                     setDragState({
                                                         action: 'resize',
                                                         startX: pos.x,
@@ -695,7 +726,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
                                         } else if (tool === 'select') {
                                             e.stopPropagation();
                                             setSelectedIndex(i);
-                                            const pos = getMousePosRatio(e as any);
+                                            const pos = getMousePosRatio(e);
                                             setDragState({
                                                 action: 'move',
                                                 startX: pos.x,
