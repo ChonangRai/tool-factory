@@ -51,15 +51,19 @@ const signCapability = async (formId: string, secret: string) => {
 const readCapability = async (token: string, formId: string, secret: string) => {
   const [body, sig] = (token || '').split('.');
   if (!body || !sig) return { ok: false, reason: 'malformed' };
-  const valid = await crypto.subtle.verify(
-    'HMAC',
-    await hmacKey(secret),
-    fromB64url(sig),
-    new TextEncoder().encode(body)
-  );
-  if (!valid) return { ok: false, reason: 'bad signature' };
+
+  // A hostile caller controls both halves, so decoding and verification are
+  // guarded together: non-base64 input makes atob throw, which would otherwise
+  // surface as a 500 instead of a clean rejection.
   let claims: { f?: string; exp?: number };
   try {
+    const valid = await crypto.subtle.verify(
+      'HMAC',
+      await hmacKey(secret),
+      fromB64url(sig),
+      new TextEncoder().encode(body)
+    );
+    if (!valid) return { ok: false, reason: 'bad signature' };
     claims = JSON.parse(new TextDecoder().decode(fromB64url(body)));
   } catch {
     return { ok: false, reason: 'malformed' };
