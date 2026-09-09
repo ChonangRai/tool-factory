@@ -1,4 +1,4 @@
-import { FileOutput, Image as ImageIcon, Layers, Lock, Minimize2, type LucideIcon } from 'lucide-react';
+import { FileOutput, FileSearch, Image as ImageIcon, Layers, Lock, Minimize2, type LucideIcon } from 'lucide-react';
 
 export interface Tool {
   id: string;
@@ -38,6 +38,15 @@ export const CONVERTER_TOOLS: Tool[] = [
     description: 'Turn JPEG and PNG images into one PDF, in the order you choose.',
     icon: FileOutput,
     path: '/factory/image-to-pdf',
+    status: 'live',
+  },
+  {
+    id: 'ocr',
+    name: 'Make a scan searchable',
+    description: 'Read the text in a scanned PDF so you can search, select and copy it.',
+    icon: FileSearch,
+    path: '/factory/ocr',
+    capabilities: ['English OCR', 'Searchable PDF', 'Text file'],
     status: 'live',
   },
 ];

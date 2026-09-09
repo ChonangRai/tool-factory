@@ -14,6 +14,7 @@ const PDFToImage = lazy(() => import("./pages/PDFToImage"));
 const ImageToPDF = lazy(() => import("./pages/ImageToPDF"));
 const CompressPDF = lazy(() => import("./pages/CompressPDF"));
 const ProtectPDF = lazy(() => import("./pages/ProtectPDF"));
+const OcrPDF = lazy(() => import("./pages/OcrPDF"));
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/factory/image-to-pdf" element={<ImageToPDF />} />
             <Route path="/factory/compress" element={<CompressPDF />} />
             <Route path="/factory/protect" element={<ProtectPDF />} />
+            <Route path="/factory/ocr" element={<OcrPDF />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
