@@ -1,10 +1,11 @@
-import { FileOutput, FileSearch, Image as ImageIcon, Layers, Lock, Minimize2, type LucideIcon } from 'lucide-react';
+import { FileOutput, FileSearch, Image as ImageIcon, Layers, Lock, LockOpen, Minimize2, type LucideIcon } from 'lucide-react';
 
 /**
  * What a tool can take in and what it hands on. `encrypted-pdf` is its own
  * kind on purpose: a password-protected file is a PDF that no other tool here
- * can read, which is what makes Protect terminal without anything having to
- * say so. An Unlock tool would simply declare that it accepts one.
+ * can read. It is what keeps Protect from offering tools that would choke on
+ * its output, and what lets Unlock -- the one tool that accepts one -- pick it
+ * up without anything special-casing either of them.
  */
 export type PdfPayload = 'pdf' | 'encrypted-pdf' | 'image' | 'text';
 
@@ -105,6 +106,17 @@ export const SECURE_TOOLS: Tool[] = [
     status: 'live',
     accepts: ['pdf'],
     produces: 'encrypted-pdf',
+  },
+  {
+    id: 'unlock',
+    name: 'Unlock PDF',
+    description: 'Remove a password from a PDF you can already open.',
+    icon: LockOpen,
+    path: '/factory/unlock',
+    capabilities: ['Removes the password', 'Keeps the pages as they are'],
+    status: 'live',
+    accepts: ['encrypted-pdf'],
+    produces: 'pdf',
   },
 ];
 

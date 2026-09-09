@@ -15,6 +15,7 @@ const ImageToPDF = lazy(() => import("./pages/ImageToPDF"));
 const CompressPDF = lazy(() => import("./pages/CompressPDF"));
 const ProtectPDF = lazy(() => import("./pages/ProtectPDF"));
 const OcrPDF = lazy(() => import("./pages/OcrPDF"));
+const UnlockPDF = lazy(() => import("./pages/UnlockPDF"));
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,7 @@ const App = () => (
             <Route path="/factory/compress" element={<CompressPDF />} />
             <Route path="/factory/protect" element={<ProtectPDF />} />
             <Route path="/factory/ocr" element={<OcrPDF />} />
+            <Route path="/factory/unlock" element={<UnlockPDF />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

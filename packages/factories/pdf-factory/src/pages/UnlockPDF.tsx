@@ -1,63 +1,37 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Check, Download, Eye, EyeOff, Loader2, Lock, ShieldCheck } from 'lucide-react';
-import { validatePDFFiles } from '@/lib/pdfValidation';
+import { AlertTriangle, Check, Download, Eye, EyeOff, Loader2, LockOpen, ShieldCheck } from 'lucide-react';
+import { validateEncryptedPDFFile } from '@/lib/pdfValidation';
 import { formatFileSize } from '@/lib/compress';
-import {
-  checkPassword,
-  passwordByteLength,
-  passwordStrength,
-  protectPDF,
-  protectedFileName,
-  ProtectError,
-  PASSWORD_MAX_BYTES,
-  PASSWORD_MIN_LENGTH,
-  type ProtectResult,
-} from '@/lib/protect';
+import { looksEncrypted, unlockedFileName, unlockPdf, UnlockError, type UnlockResult } from '@/lib/unlock';
 import { downloadBlob } from '@/lib/download';
 import { claimActivePdf, type ActivePdfMeta } from '@/lib/activePdf';
 import { pdfFileFrom } from '@/lib/pdfBytes';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
+import UploadZone from '@/components/factory/UploadZone';
 import CarriedFrom from '@/components/factory/CarriedFrom';
 import ContinueWithPDF from '@/components/factory/ContinueWithPDF';
-import UploadZone from '@/components/factory/UploadZone';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/hooks/use-toast';
 
-const STRENGTH_COPY = {
-  weak: { label: 'Weak', className: 'text-destructive' },
-  fair: { label: 'Fair', className: 'text-amber-600' },
-  strong: { label: 'Strong', className: 'text-primary' },
-} as const;
-
-const ProtectPDF = () => {
+const UnlockPDF = () => {
   const [file, setFile] = useState<File | null>(null);
-  const [pageCount, setPageCount] = useState(0);
   const [password, setPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
   const [reveal, setReveal] = useState(false);
-  const [touched, setTouched] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
-  const [result, setResult] = useState<ProtectResult | null>(null);
   const [blocked, setBlocked] = useState<string | null>(null);
+  const [result, setResult] = useState<UnlockResult | null>(null);
   const [carriedFrom, setCarriedFrom] = useState<ActivePdfMeta | null>(null);
-
-  const check = useMemo(() => checkPassword(password, confirmation), [password, confirmation]);
-  const strength = useMemo(() => passwordStrength(password), [password]);
-  const byteLength = useMemo(() => passwordByteLength(password), [password]);
 
   const reset = useCallback(() => {
     setFile(null);
-    setPageCount(0);
     setPassword('');
-    setConfirmation('');
     setReveal(false);
-    setTouched(false);
-    setResult(null);
     setBlocked(null);
+    setResult(null);
     setCarriedFrom(null);
   }, []);
 
@@ -71,23 +45,33 @@ const ProtectPDF = () => {
     setIsChecking(true);
     setResult(null);
     setBlocked(null);
+    setPassword('');
     setCarriedFrom(null);
     try {
-      const { valid, errors } = await validatePDFFiles([selected], 0, 0);
-      if (errors.length > 0 || valid.length === 0) {
-        toast({ title: 'Upload failed', description: errors[0] ?? 'Could not read this PDF.', variant: 'destructive' });
+      // Encrypted input needs its own check: the ordinary validator opens the
+      // document to count pages, which is precisely what a locked file refuses.
+      const { file: valid, message } = await validateEncryptedPDFFile(selected, looksEncrypted);
+      if (!valid) {
+        toast({
+          title: 'This PDF cannot be unlocked',
+          description: message ?? 'Could not read this PDF.',
+          variant: 'destructive',
+        });
         reset();
         return;
       }
-      setFile(valid[0].file);
-      setPageCount(valid[0].pageCount);
+      setFile(valid);
+    } catch (error) {
+      console.error('Failed to inspect PDF', error);
+      toast({ title: 'Unable to open PDF', description: 'This file could not be read.', variant: 'destructive' });
+      reset();
     } finally {
       setIsChecking(false);
     }
   }, [reset]);
 
-  // A carried PDF is fed through the same upload path, so it is validated and
-  // rejected on the same terms as one the user picks.
+  // A PDF carried from Protect arrives encrypted, so it takes this route's own
+  // upload path rather than the normal one.
   useEffect(() => {
     const carried = claimActivePdf();
     if (!carried) return;
@@ -98,40 +82,36 @@ const ProtectPDF = () => {
     toast({ title: 'Not a PDF file', description: fileNames.join(', '), variant: 'destructive' });
   }, []);
 
-  const handleProtect = useCallback(async () => {
-    if (!file) return;
-    setTouched(true);
-    if (check.problem) return;
+  const handleUnlock = useCallback(async () => {
+    if (!file || password.length === 0) return;
 
     setIsWorking(true);
     setBlocked(null);
     setResult(null);
-    // Let the busy state paint before the encryption blocks the main thread.
+    // Let the busy state paint before decryption blocks the main thread.
     await new Promise((resolve) => setTimeout(resolve, 30));
 
     try {
-      const outcome = await protectPDF(file, password);
+      const outcome = await unlockPdf(file, password);
       setResult(outcome);
       // The password has done its job; don't keep it in component state.
       setPassword('');
-      setConfirmation('');
       setReveal(false);
-      setTouched(false);
     } catch (error) {
-      if (error instanceof ProtectError) {
+      if (error instanceof UnlockError) {
         setBlocked(error.message);
       } else {
-        console.error('Failed to protect PDF', error);
-        setBlocked('Something went wrong while protecting this PDF.');
+        // Never logged with the password: only the failure itself is reported.
+        console.error('Failed to unlock PDF');
+        setBlocked('Something went wrong while unlocking this PDF.');
       }
     } finally {
       setIsWorking(false);
     }
-  }, [check.problem, file, password]);
+  }, [file, password]);
 
-  // One File behind the download and the handoff to Unlock.
   const resultFile = useMemo(
-    () => (result && file ? pdfFileFrom(result.blob, protectedFileName(file.name)) : null),
+    () => (result && file ? pdfFileFrom(result.blob, unlockedFileName(file.name)) : null),
     [file, result],
   );
 
@@ -140,28 +120,24 @@ const ProtectPDF = () => {
     downloadBlob(resultFile, resultFile.name);
   }, [resultFile]);
 
-  const showError = touched && check.problem !== null;
-
   return (
     <div className="flex h-screen flex-col bg-background">
       <Header />
       <main className="flex-1 overflow-y-auto">
         <div className="page-shell space-y-6 py-6 sm:py-8">
           <PageHeader
-            title="Protect PDF"
-            description="Add a password that must be entered to open the PDF. The file is encrypted in your browser."
+            title="Unlock PDF"
+            description="Remove a password from a PDF you can already open. The file is decrypted in your browser."
             backTo={{ href: '/factory', label: 'PDF Workspace' }}
             meta={
-              file && !isChecking
-                ? (
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span>
-                        {file.name} · {pageCount} {pageCount === 1 ? 'page' : 'pages'} · {formatFileSize(file.size)}
-                      </span>
-                      {carriedFrom && <CarriedFrom meta={carriedFrom} />}
-                    </span>
-                  )
-                : undefined
+              file && !isChecking ? (
+                <span className="flex flex-wrap items-center gap-2">
+                  <span>
+                    {file.name} · {formatFileSize(file.size)} · password protected
+                  </span>
+                  {carriedFrom && <CarriedFrom meta={carriedFrom} />}
+                </span>
+              ) : undefined
             }
             actions={
               file && !isChecking ? (
@@ -176,14 +152,14 @@ const ProtectPDF = () => {
             onUpload={handleUpload}
             onRejected={handleRejected}
             hasFiles={isChecking || !!file}
-            dropLabel="Drop a PDF to protect"
+            dropLabel="Drop a password-protected PDF"
           >
             {() => (
               <>
                 {isChecking && (
                   <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" />
-                    <p>Opening PDF…</p>
+                    <p>Checking your PDF…</p>
                   </div>
                 )}
 
@@ -197,42 +173,37 @@ const ProtectPDF = () => {
                               <Check className="h-5 w-5 text-primary" aria-hidden="true" />
                             </div>
                             <div>
-                              <h2 className="text-sm font-semibold text-foreground">Your PDF is protected</h2>
+                              <h2 className="text-sm font-semibold text-foreground">The password is removed</h2>
                               <p className="mt-0.5 text-sm text-muted-foreground">
                                 {result.pageCount} {result.pageCount === 1 ? 'page' : 'pages'} ·{' '}
-                                {formatFileSize(result.resultBytes)} · encrypted with AES-256
+                                {formatFileSize(result.resultBytes)} · opens without a password
                               </p>
                             </div>
                           </div>
                           <Button onClick={handleDownload} className="mt-4 w-full">
                             <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-                            Download protected PDF
+                            Download unlocked PDF
                           </Button>
-                          <p className="mt-3 text-sm text-muted-foreground">
-                            Store your password somewhere safe before you close this page.
-                          </p>
                         </section>
-                        <ContinueWithPDF
-                          file={resultFile}
-                          from="protect"
-                          pageCount={result.pageCount}
-                          className="mt-5"
-                        />
+
+                        <ContinueWithPDF file={resultFile} from="unlock" pageCount={result.pageCount} />
                       </>
                     ) : (
                       <section className="space-y-4 rounded-xl border border-border bg-card p-5">
                         <div className="space-y-2">
-                          <Label htmlFor="protect-password">Password</Label>
+                          <Label htmlFor="unlock-password">Password</Label>
                           <div className="relative">
                             <Input
-                              id="protect-password"
+                              id="unlock-password"
                               type={reveal ? 'text' : 'password'}
                               value={password}
-                              onChange={(e) => setPassword(e.target.value)}
-                              onBlur={() => setTouched(true)}
-                              autoComplete="new-password"
+                              onChange={(event) => setPassword(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') void handleUnlock();
+                              }}
+                              autoComplete="off"
                               className="pr-11"
-                              aria-describedby="protect-password-hint"
+                              aria-describedby="unlock-password-hint"
                             />
                             <button
                               type="button"
@@ -241,48 +212,16 @@ const ProtectPDF = () => {
                               aria-label={reveal ? 'Hide password' : 'Show password'}
                               aria-pressed={reveal}
                             >
-                              {reveal ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+                              {reveal ? (
+                                <EyeOff className="h-4 w-4" aria-hidden="true" />
+                              ) : (
+                                <Eye className="h-4 w-4" aria-hidden="true" />
+                              )}
                             </button>
                           </div>
-                          <p id="protect-password-hint" className="text-xs text-muted-foreground">
-                            At least {PASSWORD_MIN_LENGTH} characters.{' '}
-                            {password.length > 0 && (
-                              <>
-                                Looks <span className={STRENGTH_COPY[strength].className}>{STRENGTH_COPY[strength].label.toLowerCase()}</span> —
-                                a longer passphrase is harder to guess, though no hint can promise safety.
-                              </>
-                            )}
-                          </p>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="protect-confirm">Confirm password</Label>
-                          <Input
-                            id="protect-confirm"
-                            type={reveal ? 'text' : 'password'}
-                            value={confirmation}
-                            onChange={(e) => setConfirmation(e.target.value)}
-                            onBlur={() => setTouched(true)}
-                            autoComplete="new-password"
-                          />
-                        </div>
-
-                        {showError && (
-                          <p className="text-sm text-destructive" role="alert">
-                            {check.message}
-                          </p>
-                        )}
-                        {!showError && byteLength > PASSWORD_MAX_BYTES && (
-                          <p className="text-sm text-destructive" role="alert">
-                            This password is too long for the PDF format.
-                          </p>
-                        )}
-
-                        <div className="flex gap-3 rounded-lg bg-secondary/60 p-3">
-                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
-                          <p className="text-sm text-muted-foreground">
-                            If you forget this password, Tool Factory cannot recover it. Your PDF and password never
-                            leave your device.
+                          <p id="unlock-password-hint" className="text-xs text-muted-foreground">
+                            The password you use to open this PDF. It is used here and then forgotten — it is never
+                            stored, and never sent anywhere.
                           </p>
                         </div>
 
@@ -293,14 +232,18 @@ const ProtectPDF = () => {
                           </div>
                         )}
 
-                        <Button onClick={handleProtect} disabled={isWorking} className="w-full">
+                        <Button onClick={handleUnlock} disabled={isWorking || password.length === 0} className="w-full">
                           {isWorking ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
                           ) : (
-                            <Lock className="mr-2 h-4 w-4" aria-hidden="true" />
+                            <LockOpen className="mr-2 h-4 w-4" aria-hidden="true" />
                           )}
-                          {isWorking ? 'Encrypting…' : 'Protect PDF'}
+                          {isWorking ? 'Unlocking…' : 'Unlock PDF'}
                         </Button>
+
+                        <p className="text-sm text-muted-foreground">
+                          This removes a password you already know. It cannot recover or guess a forgotten one.
+                        </p>
                       </section>
                     )}
                   </div>
@@ -312,12 +255,12 @@ const ProtectPDF = () => {
           {!file && !isChecking && (
             <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
               <span className="flex items-center gap-2">
-                <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
-                Real AES-256 encryption, not a viewer setting
+                <LockOpen className="h-4 w-4 shrink-0" aria-hidden="true" />
+                For PDFs you can already open — passwords are not recovered
               </span>
               <span className="flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
-                Encrypted locally — nothing is uploaded
+                Processed locally — nothing is uploaded
               </span>
             </div>
           )}
@@ -327,4 +270,4 @@ const ProtectPDF = () => {
   );
 };
 
-export default ProtectPDF;
+export default UnlockPDF;
