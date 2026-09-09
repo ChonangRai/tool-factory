@@ -1,5 +1,13 @@
 import { FileOutput, FileSearch, Image as ImageIcon, Layers, Lock, Minimize2, type LucideIcon } from 'lucide-react';
 
+/**
+ * What a tool can take in and what it hands on. `encrypted-pdf` is its own
+ * kind on purpose: a password-protected file is a PDF that no other tool here
+ * can read, which is what makes Protect terminal without anything having to
+ * say so. An Unlock tool would simply declare that it accepts one.
+ */
+export type PdfPayload = 'pdf' | 'encrypted-pdf' | 'image' | 'text';
+
 export interface Tool {
   id: string;
   name: string;
@@ -9,6 +17,17 @@ export interface Tool {
   path?: string;
   capabilities?: string[];
   status: 'live' | 'soon';
+  /** What this tool can be handed by a previous one. */
+  accepts?: PdfPayload[];
+  /** What a finished run can hand on, where that is a file another tool can use. */
+  produces?: PdfPayload;
+  /**
+   * Set false for tools that are not wired to receive a handoff yet, so they
+   * are never offered as a next step they could not honour.
+   */
+  offerAsNext?: boolean;
+  /** Valid by payload, but pointless after this particular tool. */
+  excludeAsNext?: string[];
 }
 
 // The workspace is where merge/split/reorder/rotate/delete/annotate all live,
@@ -21,6 +40,8 @@ export const WORKSPACE_TOOL: Tool = {
   path: '/factory',
   capabilities: ['Merge', 'Split & extract', 'Reorder', 'Rotate', 'Delete pages', 'Annotate'],
   status: 'live',
+  accepts: ['pdf'],
+  produces: 'pdf',
 };
 
 export const CONVERTER_TOOLS: Tool[] = [
@@ -31,6 +52,10 @@ export const CONVERTER_TOOLS: Tool[] = [
     icon: ImageIcon,
     path: '/factory/pdf-to-image',
     status: 'live',
+    accepts: ['pdf'],
+    produces: 'image',
+    // Not wired to receive a handoff in this batch.
+    offerAsNext: false,
   },
   {
     id: 'image-to-pdf',
@@ -39,6 +64,8 @@ export const CONVERTER_TOOLS: Tool[] = [
     icon: FileOutput,
     path: '/factory/image-to-pdf',
     status: 'live',
+    accepts: ['image'],
+    produces: 'pdf',
   },
   {
     id: 'ocr',
@@ -48,6 +75,8 @@ export const CONVERTER_TOOLS: Tool[] = [
     path: '/factory/ocr',
     capabilities: ['English OCR', 'Searchable PDF', 'Text file'],
     status: 'live',
+    accepts: ['pdf'],
+    produces: 'pdf',
   },
 ];
 
@@ -60,6 +89,8 @@ export const OPTIMIZE_TOOLS: Tool[] = [
     path: '/factory/compress',
     capabilities: ['Optimise structure', 'Compress scans'],
     status: 'live',
+    accepts: ['pdf'],
+    produces: 'pdf',
   },
 ];
 
@@ -72,6 +103,8 @@ export const SECURE_TOOLS: Tool[] = [
     path: '/factory/protect',
     capabilities: ['AES-256', 'Password to open'],
     status: 'live',
+    accepts: ['pdf'],
+    produces: 'encrypted-pdf',
   },
 ];
 
@@ -84,3 +117,25 @@ export const NAV_TOOLS: Tool[] = [
   ...OPTIMIZE_TOOLS,
   ...SECURE_TOOLS,
 ];
+
+export const findTool = (id: string): Tool | undefined => NAV_TOOLS.find((tool) => tool.id === id);
+
+/**
+ * The tools a finished result can be carried straight into, derived from the
+ * catalog rather than listed per page -- so a new tool becomes a valid next
+ * step by declaring what it accepts, and no page has to know about any other.
+ */
+export const nextToolsFor = (toolId: string): Tool[] => {
+  const origin = findTool(toolId);
+  const payload = origin?.produces;
+  if (!origin || !payload) return [];
+
+  return NAV_TOOLS.filter(
+    (tool) =>
+      tool.id !== origin.id &&
+      !!tool.path &&
+      tool.offerAsNext !== false &&
+      tool.accepts?.includes(payload) &&
+      !origin.excludeAsNext?.includes(tool.id),
+  );
+};

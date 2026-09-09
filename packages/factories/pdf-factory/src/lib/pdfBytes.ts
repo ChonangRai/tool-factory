@@ -17,3 +17,11 @@ export const pdfBlob = (bytes: Uint8Array): Blob =>
 
 export const pdfFile = (bytes: Uint8Array, name: string): File =>
   new File([asBlobPart(bytes)], name, { type: 'application/pdf' });
+
+/**
+ * Names an existing blob so it can be downloaded and handed to another tool as
+ * one value. The blob's data is referenced, not copied, so this is cheap even
+ * for a 50MB result.
+ */
+export const pdfFileFrom = (blob: Blob, name: string): File =>
+  blob instanceof File && blob.name === name ? blob : new File([blob], name, { type: 'application/pdf' });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, Download, FileSearch, FileText, Loader2, ShieldCheck } from 'lucide-react';
 import { validatePDFFiles } from '@/lib/pdfValidation';
 import { analyzePDF, type DocumentAnalysis } from '@/lib/pdfAnalysis';
@@ -12,9 +12,13 @@ import {
   type OcrResult,
 } from '@/lib/ocr';
 import { downloadBlob } from '@/lib/download';
+import { claimActivePdf, type ActivePdfMeta } from '@/lib/activePdf';
+import { pdfFileFrom } from '@/lib/pdfBytes';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
+import CarriedFrom from '@/components/factory/CarriedFrom';
+import ContinueWithPDF from '@/components/factory/ContinueWithPDF';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
@@ -36,6 +40,7 @@ const OcrPDF = () => {
   const [result, setResult] = useState<OcrResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState<OcrProgress | null>(null);
+  const [carriedFrom, setCarriedFrom] = useState<ActivePdfMeta | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -50,6 +55,7 @@ const OcrPDF = () => {
     setRange('');
     setResult(null);
     setProgress(null);
+    setCarriedFrom(null);
   }, []);
 
   const handleUpload = useCallback(async (files: File[]) => {
@@ -62,6 +68,7 @@ const OcrPDF = () => {
     setIsAnalyzing(true);
     setResult(null);
     setProgress(null);
+    setCarriedFrom(null);
     try {
       const { valid, errors } = await validatePDFFiles([selected], 0, 0);
       if (errors.length > 0 || valid.length === 0) {
@@ -85,6 +92,14 @@ const OcrPDF = () => {
       setIsAnalyzing(false);
     }
   }, [reset]);
+
+  // Same upload path as a file the user picks, so validation and limits apply
+  // to a carried PDF exactly as they would to an uploaded one.
+  useEffect(() => {
+    const carried = claimActivePdf();
+    if (!carried) return;
+    void handleUpload([carried.file]).then(() => setCarriedFrom(carried.meta));
+  }, [handleUpload]);
 
   const handleRejected = useCallback((fileNames: string[]) => {
     toast({ title: 'Not a PDF file', description: fileNames.join(', '), variant: 'destructive' });
@@ -127,10 +142,16 @@ const OcrPDF = () => {
     }
   }, [file, selectedPages]);
 
+  // One File behind both the download and the handoff.
+  const resultFile = useMemo(
+    () => (result && file ? pdfFileFrom(result.blob, `${baseName(file.name)}-searchable.pdf`) : null),
+    [file, result],
+  );
+
   const handleDownloadPdf = useCallback(() => {
-    if (!result || !file) return;
-    downloadBlob(result.blob, `${baseName(file.name)}-searchable.pdf`);
-  }, [file, result]);
+    if (!resultFile) return;
+    downloadBlob(resultFile, resultFile.name);
+  }, [resultFile]);
 
   const handleDownloadText = useCallback(() => {
     if (!result || !file) return;
@@ -152,7 +173,14 @@ const OcrPDF = () => {
             backTo={{ href: '/factory', label: 'PDF Workspace' }}
             meta={
               file && analysis && !isAnalyzing
-                ? `${file.name} · ${analysis.pageCount} ${analysis.pageCount === 1 ? 'page' : 'pages'}`
+                ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span>
+                        {file.name} · {analysis.pageCount} {analysis.pageCount === 1 ? 'page' : 'pages'}
+                      </span>
+                      {carriedFrom && <CarriedFrom meta={carriedFrom} />}
+                    </span>
+                  )
                 : undefined
             }
             actions={
@@ -348,6 +376,10 @@ const OcrPDF = () => {
                           </div>
                         </div>
                       </section>
+                    )}
+
+                    {resultFile && result && result.wordCount > 0 && (
+                      <ContinueWithPDF file={resultFile} from="ocr" pageCount={result.pageCount} />
                     )}
                   </div>
                 )}

@@ -1,10 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { usePDF, PDFPageItem } from '@/hooks/usePDF';
 import { validatePDFFiles } from '@/lib/pdfValidation';
 import { downloadBlob } from '@/lib/download';
+import { claimActivePdf, type ActivePdfMeta } from '@/lib/activePdf';
+import { pdfFileFrom } from '@/lib/pdfBytes';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
+import CarriedFrom from '@/components/factory/CarriedFrom';
+import ContinueWithPDF from '@/components/factory/ContinueWithPDF';
 import PageGrid from '@/components/factory/PageGrid';
 import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, Download, Loader2, MousePointerSquareDashed, Scissors } from 'lucide-react';
@@ -15,9 +19,12 @@ const Index = () => {
   const [pdfItems, setPdfItems] = useState<PDFPageItem[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'split'>('grid');
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+  const [carriedFrom, setCarriedFrom] = useState<ActivePdfMeta | null>(null);
+  const [exported, setExported] = useState<File | null>(null);
   const { mergePDFs, splitPDF, isProcessing } = usePDF();
 
   const handleUpload = useCallback(async (newFiles: File[]) => {
+    setCarriedFrom(null);
     const existingPageCount = pdfItems.reduce((sum, item) => sum + item.pageCount, 0);
     const { valid, errors } = await validatePDFFiles(newFiles, pdfItems.length, existingPageCount);
 
@@ -43,6 +50,19 @@ const Index = () => {
         variant: "destructive",
       });
     }
+  }, [pdfItems]);
+
+  // Carried PDFs join the workspace through the ordinary upload path.
+  useEffect(() => {
+    const carried = claimActivePdf();
+    if (!carried) return;
+    void handleUpload([carried.file]).then(() => setCarriedFrom(carried.meta));
+  }, [handleUpload]);
+
+  // Any edit invalidates a previous export, so the next-step offer never
+  // carries a file that no longer matches what is on screen.
+  useEffect(() => {
+    setExported(null);
   }, [pdfItems]);
 
   const handleRejected = useCallback((fileNames: string[]) => {
@@ -125,7 +145,9 @@ const Index = () => {
 
     if (blob) {
       const filename = pdfItems.length === 1 ? pdfItems[0].file.name : `merged-${Date.now()}.pdf`;
-      downloadBlob(blob, filename);
+      const file = pdfFileFrom(blob, filename);
+      downloadBlob(file, filename);
+      setExported(file);
       toast({
         title: "Export complete",
         description: pdfItems.length === 1
@@ -219,7 +241,14 @@ const Index = () => {
                     ? undefined
                     : 'Add PDFs to merge, split, reorder, rotate or annotate them — all in your browser.'
                 }
-                meta={hasFiles ? countSummary : undefined}
+                meta={
+                  hasFiles ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span>{countSummary}</span>
+                      {carriedFrom && <CarriedFrom meta={carriedFrom} />}
+                    </span>
+                  ) : undefined
+                }
                 actions={
                   hasFiles ? (
                     <>
@@ -264,6 +293,12 @@ const Index = () => {
                   )}
                 </UploadZone>
               </div>
+
+              {exported && (
+                <div className="mt-6">
+                  <ContinueWithPDF file={exported} from="workspace" pageCount={totalPages} />
+                </div>
+              )}
             </div>
           </div>
         ) : (

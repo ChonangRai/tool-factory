@@ -13,11 +13,12 @@ import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordi
 import { Download, FileOutput, Loader2, ShieldCheck, Trash2 } from 'lucide-react';
 import { validateImageFiles, ValidatedImage } from '@/lib/imageValidation';
 import { downloadBlob } from '@/lib/download';
-import { pdfBlob } from '@/lib/pdfBytes';
+import { pdfFile } from '@/lib/pdfBytes';
 import { yieldToBrowser } from '@/lib/scheduling';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
+import ContinueWithPDF from '@/components/factory/ContinueWithPDF';
 import { SortablePageCard } from '@/components/factory/SortablePageCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -44,6 +45,7 @@ const ImageToPDF = () => {
   const [pageMode, setPageMode] = useState<PageMode>('fitToA4');
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [exported, setExported] = useState<File | null>(null);
   const imagesRef = useRef<ImageItem[]>([]);
   imagesRef.current = images;
 
@@ -79,6 +81,11 @@ const ImageToPDF = () => {
       });
     }
   }, []);
+
+  // Changing the images invalidates the PDF built from the previous set.
+  useEffect(() => {
+    setExported(null);
+  }, [images, pageMode]);
 
   const handleRejected = useCallback((fileNames: string[]) => {
     toast({
@@ -165,8 +172,10 @@ const ImageToPDF = () => {
         await yieldToBrowser();
       }
 
-      const pdfBytes = await pdfDoc.save();
-      downloadBlob(pdfBlob(pdfBytes), `images-to-pdf-${Date.now()}.pdf`);
+      // One File for the download and for carrying on into another tool.
+      const created = pdfFile(await pdfDoc.save(), `images-to-pdf-${Date.now()}.pdf`);
+      downloadBlob(created, created.name);
+      setExported(created);
       toast({ title: 'PDF created', description: `${images.length} image(s) combined into one PDF.` });
     } catch (error) {
       console.error('Failed to build PDF from images', error);
@@ -258,6 +267,10 @@ const ImageToPDF = () => {
                     </div>
                   </div>
                 </div>
+
+                {exported && (
+                  <ContinueWithPDF file={exported} from="image-to-pdf" pageCount={images.length} />
+                )}
 
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                   Pages — drag to reorder

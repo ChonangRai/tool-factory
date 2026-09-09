@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowRight, Check, Download, FileText, Loader2, Minimize2, ShieldCheck } from 'lucide-react';
 import pdfjsLib from '@/lib/pdfWorker';
 import { validatePDFFiles } from '@/lib/pdfValidation';
@@ -12,9 +12,13 @@ import {
   type ScanPresetKey,
 } from '@/lib/compress';
 import { downloadBlob } from '@/lib/download';
+import { claimActivePdf, type ActivePdfMeta } from '@/lib/activePdf';
+import { pdfFileFrom } from '@/lib/pdfBytes';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
+import CarriedFrom from '@/components/factory/CarriedFrom';
+import ContinueWithPDF from '@/components/factory/ContinueWithPDF';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { toast } from '@/hooks/use-toast';
@@ -54,6 +58,7 @@ const CompressPDF = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [carriedFrom, setCarriedFrom] = useState<ActivePdfMeta | null>(null);
   const originalBytesRef = useRef<ArrayBuffer | null>(null);
 
   const reset = useCallback(() => {
@@ -63,6 +68,7 @@ const CompressPDF = () => {
     setResult(null);
     setPreview(null);
     setProgress(null);
+    setCarriedFrom(null);
   }, []);
 
   const handleUpload = useCallback(async (files: File[]) => {
@@ -75,6 +81,7 @@ const CompressPDF = () => {
     setIsAnalyzing(true);
     setResult(null);
     setPreview(null);
+    setCarriedFrom(null);
     try {
       const { valid, errors } = await validatePDFFiles([selected], 0, 0);
       if (errors.length > 0 || valid.length === 0) {
@@ -96,6 +103,14 @@ const CompressPDF = () => {
       setIsAnalyzing(false);
     }
   }, [reset]);
+
+  // A PDF handed over by another tool goes through exactly the same upload
+  // path as a file the user picks, so it gets the same validation and limits.
+  useEffect(() => {
+    const carried = claimActivePdf();
+    if (!carried) return;
+    void handleUpload([carried.file]).then(() => setCarriedFrom(carried.meta));
+  }, [handleUpload]);
 
   const handleRejected = useCallback((fileNames: string[]) => {
     toast({ title: 'Not a PDF file', description: fileNames.join(', '), variant: 'destructive' });
@@ -141,10 +156,17 @@ const CompressPDF = () => {
     }
   }, [analysis, file, preset]);
 
+  // One File for both the download and the handoff: no second copy of a
+  // result that can be 50MB.
+  const resultFile = useMemo(
+    () => (result && file ? pdfFileFrom(result.blob, `${baseName(file.name)}-compressed.pdf`) : null),
+    [file, result],
+  );
+
   const handleDownload = useCallback(() => {
-    if (!result || !file) return;
-    downloadBlob(result.blob, `${baseName(file.name)}-compressed.pdf`);
-  }, [file, result]);
+    if (!resultFile) return;
+    downloadBlob(resultFile, resultFile.name);
+  }, [resultFile]);
 
   const unsupported = analysis?.unsupported ?? null;
   const scanPageCount = analysis?.scanLikePageNumbers.length ?? 0;
@@ -160,7 +182,15 @@ const CompressPDF = () => {
             backTo={{ href: '/factory', label: 'PDF Workspace' }}
             meta={
               file && analysis && !isAnalyzing
-                ? `${file.name} · ${analysis.pageCount} ${analysis.pageCount === 1 ? 'page' : 'pages'} · ${formatFileSize(analysis.originalBytes)}`
+                ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span>
+                        {file.name} · {analysis.pageCount} {analysis.pageCount === 1 ? 'page' : 'pages'} ·{' '}
+                        {formatFileSize(analysis.originalBytes)}
+                      </span>
+                      {carriedFrom && <CarriedFrom meta={carriedFrom} />}
+                    </span>
+                  )
                 : undefined
             }
             actions={
@@ -352,6 +382,10 @@ const CompressPDF = () => {
                           </div>
                         )}
                       </section>
+                    )}
+
+                    {resultFile && (
+                      <ContinueWithPDF file={resultFile} from="compress" pageCount={result?.pageCount} />
                     )}
                   </div>
                 )}

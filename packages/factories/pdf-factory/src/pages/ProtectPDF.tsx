@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Check, Download, Eye, EyeOff, Loader2, Lock, ShieldCheck } from 'lucide-react';
 import { validatePDFFiles } from '@/lib/pdfValidation';
 import { formatFileSize } from '@/lib/compress';
@@ -14,8 +14,10 @@ import {
   type ProtectResult,
 } from '@/lib/protect';
 import { downloadBlob } from '@/lib/download';
+import { claimActivePdf, type ActivePdfMeta } from '@/lib/activePdf';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
+import CarriedFrom from '@/components/factory/CarriedFrom';
 import UploadZone from '@/components/factory/UploadZone';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +41,7 @@ const ProtectPDF = () => {
   const [isWorking, setIsWorking] = useState(false);
   const [result, setResult] = useState<ProtectResult | null>(null);
   const [blocked, setBlocked] = useState<string | null>(null);
+  const [carriedFrom, setCarriedFrom] = useState<ActivePdfMeta | null>(null);
 
   const check = useMemo(() => checkPassword(password, confirmation), [password, confirmation]);
   const strength = useMemo(() => passwordStrength(password), [password]);
@@ -53,6 +56,7 @@ const ProtectPDF = () => {
     setTouched(false);
     setResult(null);
     setBlocked(null);
+    setCarriedFrom(null);
   }, []);
 
   const handleUpload = useCallback(async (files: File[]) => {
@@ -65,6 +69,7 @@ const ProtectPDF = () => {
     setIsChecking(true);
     setResult(null);
     setBlocked(null);
+    setCarriedFrom(null);
     try {
       const { valid, errors } = await validatePDFFiles([selected], 0, 0);
       if (errors.length > 0 || valid.length === 0) {
@@ -78,6 +83,14 @@ const ProtectPDF = () => {
       setIsChecking(false);
     }
   }, [reset]);
+
+  // A carried PDF is fed through the same upload path, so it is validated and
+  // rejected on the same terms as one the user picks.
+  useEffect(() => {
+    const carried = claimActivePdf();
+    if (!carried) return;
+    void handleUpload([carried.file]).then(() => setCarriedFrom(carried.meta));
+  }, [handleUpload]);
 
   const handleRejected = useCallback((fileNames: string[]) => {
     toast({ title: 'Not a PDF file', description: fileNames.join(', '), variant: 'destructive' });
@@ -132,7 +145,14 @@ const ProtectPDF = () => {
             backTo={{ href: '/factory', label: 'PDF Workspace' }}
             meta={
               file && !isChecking
-                ? `${file.name} · ${pageCount} ${pageCount === 1 ? 'page' : 'pages'} · ${formatFileSize(file.size)}`
+                ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span>
+                        {file.name} · {pageCount} {pageCount === 1 ? 'page' : 'pages'} · {formatFileSize(file.size)}
+                      </span>
+                      {carriedFrom && <CarriedFrom meta={carriedFrom} />}
+                    </span>
+                  )
                 : undefined
             }
             actions={
