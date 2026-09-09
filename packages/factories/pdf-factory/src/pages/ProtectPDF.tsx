@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Check, Download, Eye, EyeOff, Loader2, Lock, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Check, Eye, EyeOff, Loader2, Lock, ShieldCheck } from 'lucide-react';
 import { validatePDFFiles } from '@/lib/pdfValidation';
 import { formatFileSize } from '@/lib/compress';
 import {
@@ -19,7 +19,7 @@ import { pdfFileFrom } from '@/lib/pdfBytes';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import CarriedFrom from '@/components/factory/CarriedFrom';
-import ContinueWithPDF from '@/components/factory/ContinueWithPDF';
+import ResultActions from '@/components/factory/ResultActions';
 import UploadZone from '@/components/factory/UploadZone';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -204,20 +204,18 @@ const ProtectPDF = () => {
                               </p>
                             </div>
                           </div>
-                          <Button onClick={handleDownload} className="mt-4 w-full">
-                            <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-                            Download protected PDF
-                          </Button>
+                          <ResultActions
+                            file={resultFile}
+                            from="protect"
+                            pageCount={result.pageCount}
+                            onDownload={handleDownload}
+                            downloadLabel="Download protected PDF"
+                            className="mt-4"
+                          />
                           <p className="mt-3 text-sm text-muted-foreground">
                             Store your password somewhere safe before you close this page.
                           </p>
                         </section>
-                        <ContinueWithPDF
-                          file={resultFile}
-                          from="protect"
-                          pageCount={result.pageCount}
-                          className="mt-5"
-                        />
                       </>
                     ) : (
                       <section className="space-y-4 rounded-xl border border-border bg-card p-5">

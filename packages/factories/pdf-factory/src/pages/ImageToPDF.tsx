@@ -18,7 +18,7 @@ import { yieldToBrowser } from '@/lib/scheduling';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
-import ContinueWithPDF from '@/components/factory/ContinueWithPDF';
+import ResultActions from '@/components/factory/ResultActions';
 import { SortablePageCard } from '@/components/factory/SortablePageCard';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -269,7 +269,12 @@ const ImageToPDF = () => {
                 </div>
 
                 {exported && (
-                  <ContinueWithPDF file={exported} from="image-to-pdf" pageCount={images.length} />
+                  <ResultActions
+                    file={exported}
+                    from="image-to-pdf"
+                    pageCount={images.length}
+                    onDownload={() => downloadBlob(exported, exported.name)}
+                  />
                 )}
 
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, Download, FileSearch, FileText, Loader2, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Check, FileSearch, FileText, Loader2, ShieldCheck } from 'lucide-react';
 import { validatePDFFiles } from '@/lib/pdfValidation';
 import { analyzePDF, type DocumentAnalysis } from '@/lib/pdfAnalysis';
 import {
@@ -18,7 +18,7 @@ import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
 import CarriedFrom from '@/components/factory/CarriedFrom';
-import ContinueWithPDF from '@/components/factory/ContinueWithPDF';
+import ResultActions from '@/components/factory/ResultActions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
@@ -364,23 +364,24 @@ const OcrPDF = () => {
                             </div>
                           </div>
 
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <Button onClick={handleDownloadPdf}>
-                              <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-                              Searchable PDF
-                            </Button>
-                            <Button variant="outline" onClick={handleDownloadText} disabled={result.wordCount === 0}>
-                              <FileText className="mr-2 h-4 w-4" aria-hidden="true" />
-                              Text file
-                            </Button>
-                          </div>
+                          {resultFile && (
+                            <ResultActions
+                              file={resultFile}
+                              from="ocr"
+                              pageCount={result.pageCount}
+                              onDownload={handleDownloadPdf}
+                              downloadLabel="Download PDF"
+                            >
+                              <Button variant="outline" onClick={handleDownloadText} disabled={result.wordCount === 0}>
+                                <FileText className="mr-2 h-4 w-4" aria-hidden="true" />
+                                Text file
+                              </Button>
+                            </ResultActions>
+                          )}
                         </div>
                       </section>
                     )}
 
-                    {resultFile && result && result.wordCount > 0 && (
-                      <ContinueWithPDF file={resultFile} from="ocr" pageCount={result.pageCount} />
-                    )}
                   </div>
                 )}
               </>

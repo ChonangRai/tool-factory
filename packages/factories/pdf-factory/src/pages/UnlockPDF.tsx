@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Check, Download, Eye, EyeOff, Loader2, LockOpen, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Check, Eye, EyeOff, Loader2, LockOpen, ShieldCheck } from 'lucide-react';
 import { validateEncryptedPDFFile } from '@/lib/pdfValidation';
 import { formatFileSize } from '@/lib/compress';
 import { looksEncrypted, unlockedFileName, unlockPdf, UnlockError, type UnlockResult } from '@/lib/unlock';
@@ -10,7 +10,7 @@ import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
 import CarriedFrom from '@/components/factory/CarriedFrom';
-import ContinueWithPDF from '@/components/factory/ContinueWithPDF';
+import ResultActions from '@/components/factory/ResultActions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -180,13 +180,14 @@ const UnlockPDF = () => {
                               </p>
                             </div>
                           </div>
-                          <Button onClick={handleDownload} className="mt-4 w-full">
-                            <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-                            Download unlocked PDF
-                          </Button>
+                          <ResultActions
+                            file={resultFile}
+                            from="unlock"
+                            pageCount={result.pageCount}
+                            onDownload={handleDownload}
+                            className="mt-4"
+                          />
                         </section>
-
-                        <ContinueWithPDF file={resultFile} from="unlock" pageCount={result.pageCount} />
                       </>
                     ) : (
                       <section className="space-y-4 rounded-xl border border-border bg-card p-5">

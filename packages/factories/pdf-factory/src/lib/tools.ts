@@ -29,6 +29,14 @@ export interface Tool {
   offerAsNext?: boolean;
   /** Valid by payload, but pointless after this particular tool. */
   excludeAsNext?: string[];
+  /** Short label for action menus, where the full name is too wordy. */
+  actionLabel?: string;
+  /**
+   * Where "Next" goes from this tool's result. Omitted where continuing is
+   * not the expected thing to do -- Protect's output is finished work, so it
+   * offers no default and keeps Download dominant.
+   */
+  defaultNext?: string;
 }
 
 // The workspace is where merge/split/reorder/rotate/delete/annotate all live,
@@ -43,6 +51,8 @@ export const WORKSPACE_TOOL: Tool = {
   status: 'live',
   accepts: ['pdf'],
   produces: 'pdf',
+  actionLabel: 'Edit PDF',
+  defaultNext: 'compress',
 };
 
 export const CONVERTER_TOOLS: Tool[] = [
@@ -67,6 +77,8 @@ export const CONVERTER_TOOLS: Tool[] = [
     status: 'live',
     accepts: ['image'],
     produces: 'pdf',
+    actionLabel: 'Image to PDF',
+    defaultNext: 'workspace',
   },
   {
     id: 'ocr',
@@ -78,6 +90,8 @@ export const CONVERTER_TOOLS: Tool[] = [
     status: 'live',
     accepts: ['pdf'],
     produces: 'pdf',
+    actionLabel: 'Make Searchable',
+    defaultNext: 'compress',
   },
 ];
 
@@ -92,6 +106,8 @@ export const OPTIMIZE_TOOLS: Tool[] = [
     status: 'live',
     accepts: ['pdf'],
     produces: 'pdf',
+    actionLabel: 'Compress PDF',
+    defaultNext: 'protect',
   },
 ];
 
@@ -106,6 +122,7 @@ export const SECURE_TOOLS: Tool[] = [
     status: 'live',
     accepts: ['pdf'],
     produces: 'encrypted-pdf',
+    actionLabel: 'Protect PDF',
   },
   {
     id: 'unlock',
@@ -117,6 +134,8 @@ export const SECURE_TOOLS: Tool[] = [
     status: 'live',
     accepts: ['encrypted-pdf'],
     produces: 'pdf',
+    actionLabel: 'Unlock PDF',
+    defaultNext: 'workspace',
   },
 ];
 

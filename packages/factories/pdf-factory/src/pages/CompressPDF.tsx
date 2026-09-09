@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowRight, Check, Download, FileText, Loader2, Minimize2, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, FileText, Loader2, Minimize2, ShieldCheck } from 'lucide-react';
 import pdfjsLib from '@/lib/pdfWorker';
 import { validatePDFFiles } from '@/lib/pdfValidation';
 import { analyzePDF, type DocumentAnalysis } from '@/lib/pdfAnalysis';
@@ -18,7 +18,7 @@ import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
 import CarriedFrom from '@/components/factory/CarriedFrom';
-import ContinueWithPDF from '@/components/factory/ContinueWithPDF';
+import ResultActions from '@/components/factory/ResultActions';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { toast } from '@/hooks/use-toast';
@@ -356,10 +356,15 @@ const CompressPDF = () => {
                             </div>
                           </div>
 
-                          <Button onClick={handleDownload} className="w-full sm:w-auto">
-                            <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-                            {result.keptOriginal ? 'Download original' : 'Download compressed PDF'}
-                          </Button>
+                          {resultFile && (
+                            <ResultActions
+                              file={resultFile}
+                              from="compress"
+                              pageCount={result.pageCount}
+                              onDownload={handleDownload}
+                              downloadLabel={result.keptOriginal ? 'Download original' : 'Download PDF'}
+                            />
+                          )}
                         </div>
 
                         {preview && (
@@ -384,9 +389,6 @@ const CompressPDF = () => {
                       </section>
                     )}
 
-                    {resultFile && (
-                      <ContinueWithPDF file={resultFile} from="compress" pageCount={result?.pageCount} />
-                    )}
                   </div>
                 )}
               </>

@@ -8,7 +8,7 @@ import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
 import CarriedFrom from '@/components/factory/CarriedFrom';
-import ContinueWithPDF from '@/components/factory/ContinueWithPDF';
+import ResultActions from '@/components/factory/ResultActions';
 import PageGrid from '@/components/factory/PageGrid';
 import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, Download, Loader2, MousePointerSquareDashed, Scissors } from 'lucide-react';
@@ -296,7 +296,12 @@ const Index = () => {
 
               {exported && (
                 <div className="mt-6">
-                  <ContinueWithPDF file={exported} from="workspace" pageCount={totalPages} />
+                  <ResultActions
+                    file={exported}
+                    from="workspace"
+                    pageCount={totalPages}
+                    onDownload={() => downloadBlob(exported, exported.name)}
+                  />
                 </div>
               )}
             </div>
