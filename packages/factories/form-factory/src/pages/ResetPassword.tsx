@@ -7,12 +7,24 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Loader2, Lock } from 'lucide-react';
+import {
+  NEW_PASSWORD_MIN_LENGTH,
+  NEW_PASSWORD_HINT,
+  validateNewPassword,
+  validatePasswordConfirmation,
+} from '@/lib/passwordPolicy';
 
 export default function ResetPassword() {
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { updatePassword, session } = useAuth();
   const navigate = useNavigate();
+
+  // Shown inline rather than only as a toast so screen readers announce it and
+  // it stays on screen next to the field it refers to.
+  const lengthError = password ? validateNewPassword(password) : null;
+  const matchError = confirmPassword ? validatePasswordConfirmation(password, confirmPassword) : null;
 
   useEffect(() => {
     if (!session) {
@@ -27,6 +39,15 @@ export default function ResetPassword() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate before touching the recovery session, so a mistyped
+    // confirmation costs nothing and the link stays usable.
+    const invalid = validateNewPassword(password) ?? validatePasswordConfirmation(password, confirmPassword);
+    if (invalid) {
+      toast.error(invalid);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -76,10 +97,43 @@ export default function ResetPassword() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={loading}
-                minLength={6}
+                minLength={NEW_PASSWORD_MIN_LENGTH}
+                aria-invalid={!!lengthError}
+                aria-describedby="password-hint"
               />
+              <p
+                id="password-hint"
+                className={lengthError ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}
+                role={lengthError ? 'alert' : undefined}
+              >
+                {lengthError ?? NEW_PASSWORD_HINT}
+              </p>
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirm New Password</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                disabled={loading}
+                minLength={NEW_PASSWORD_MIN_LENGTH}
+                aria-invalid={!!matchError}
+                aria-describedby={matchError ? 'confirm-password-error' : undefined}
+              />
+              {matchError && (
+                <p id="confirm-password-error" role="alert" className="text-sm text-destructive">
+                  {matchError}
+                </p>
+              )}
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={loading || !!lengthError || !!matchError || !confirmPassword}
+            >
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

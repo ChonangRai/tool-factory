@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from 'sonner';
 import { Loader2, Receipt } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { NEW_PASSWORD_MIN_LENGTH, NEW_PASSWORD_HINT, validateNewPassword } from '@/lib/passwordPolicy';
 
 import {
   Dialog,
@@ -28,6 +29,9 @@ export default function Auth() {
   const [isResetOpen, setIsResetOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const { user, signIn, signUp, resetPassword } = useAuth();
+
+  // Only meaningful while creating an account; sign-in must not be length-gated.
+  const signupPasswordError = !isLogin && password ? validateNewPassword(password) : null;
   const navigate = useNavigate();
 
   const [searchParams] = useSearchParams();
@@ -127,6 +131,13 @@ export default function Auth() {
         // Signup flow
         if (!inviteToken && !organizationName.trim()) {
           toast.error('Workspace name is required');
+          setLoading(false);
+          return;
+        }
+
+        const passwordError = validateNewPassword(password);
+        if (passwordError) {
+          toast.error(passwordError);
           setLoading(false);
           return;
         }
@@ -279,8 +290,21 @@ export default function Auth() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 disabled={loading}
-                minLength={6}
+                // Only constrain a password being created. Existing accounts
+                // predate this rule and must still be able to sign in.
+                minLength={isLogin ? undefined : NEW_PASSWORD_MIN_LENGTH}
+                aria-invalid={!!signupPasswordError}
+                aria-describedby={isLogin ? undefined : 'signup-password-hint'}
               />
+              {!isLogin && (
+                <p
+                  id="signup-password-hint"
+                  className={signupPasswordError ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}
+                  role={signupPasswordError ? 'alert' : undefined}
+                >
+                  {signupPasswordError ?? NEW_PASSWORD_HINT}
+                </p>
+              )}
             </div>
             {isLogin && (
               <div className="text-right">
