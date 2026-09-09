@@ -382,20 +382,15 @@ export default function Admin() {
 
   const handleStatusChange = async (submissionId: string, newStatus: string) => {
     try {
-      const { error } = await supabase
-        .from('submissions')
-        .update({ status: newStatus })
-        .eq('id', submissionId);
+      // The status change and its audit record are one server-side
+      // transaction. The RPC takes the actor from auth.uid() and the
+      // organization from the submission, so neither can be supplied here.
+      const { error } = await (supabase as any).rpc('set_submission_status', {
+        p_submission_id: submissionId,
+        p_status: newStatus,
+      });
 
       if (error) throw error;
-
-      // Create audit log
-      await supabase.from('audit_logs').insert({
-        submission_id: submissionId,
-        admin_id: user?.id,
-        action: 'status_change',
-        data: { new_status: newStatus },
-      });
 
       toast.success('Status updated successfully');
       loadSubmissions();
