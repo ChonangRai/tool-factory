@@ -1,221 +1,394 @@
-import { useState, useCallback, useEffect } from 'react';
-import { usePDF, PDFPageItem } from '@/hooks/usePDF';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  CornerUpRight,
+  Download,
+  Layers,
+  Loader2,
+  MousePointerSquareDashed,
+  RotateCw,
+  Scissors,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { validatePDFFiles } from '@/lib/pdfValidation';
 import { downloadBlob } from '@/lib/download';
 import { claimActivePdf, type ActivePdfMeta } from '@/lib/activePdf';
-import { pdfFileFrom } from '@/lib/pdfBytes';
+import { releaseAllRenderDocs, releaseRenderDoc } from '@/lib/pdfDocCache';
+import { runSplit, type SplitPart } from '@/lib/splitPlan';
+import {
+  baseName,
+  buildPdfFile,
+  defaultGroupName,
+  groupPages,
+  newGroupId,
+  newSourceId,
+  pagesForSource,
+  pruneGroups,
+  type PageGroup,
+  type WorkspacePage,
+  type WorkspaceSource,
+} from '@/lib/workspaceDoc';
+import type { Annotation } from '@/lib/annotations';
 import Header from '@/components/factory/Header';
 import PageHeader from '@/components/factory/PageHeader';
 import UploadZone from '@/components/factory/UploadZone';
 import CarriedFrom from '@/components/factory/CarriedFrom';
 import ResultActions from '@/components/factory/ResultActions';
-import PageGrid from '@/components/factory/PageGrid';
-import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Download, Loader2, MousePointerSquareDashed, Scissors } from 'lucide-react';
+import PageOrganizer from '@/components/factory/PageOrganizer';
+import PageRail from '@/components/factory/PageRail';
 import PDFPageEditor from '@/components/factory/PDFPageEditor';
-import SidebarList from '@/components/factory/SidebarList';
+import SplitDialog from '@/components/factory/SplitDialog';
+import { toast } from '@/hooks/use-toast';
 
 const Index = () => {
-  const [pdfItems, setPdfItems] = useState<PDFPageItem[]>([]);
-  const [viewMode, setViewMode] = useState<'grid' | 'split'>('grid');
-  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+  const [sources, setSources] = useState<WorkspaceSource[]>([]);
+  const [pages, setPages] = useState<WorkspacePage[]>([]);
+  const [groups, setGroups] = useState<PageGroup[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [currentPageId, setCurrentPageId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'organize' | 'edit'>('organize');
   const [carriedFrom, setCarriedFrom] = useState<ActivePdfMeta | null>(null);
   const [exported, setExported] = useState<File | null>(null);
-  const { mergePDFs, splitPDF, isProcessing } = usePDF();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splitProgress, setSplitProgress] = useState<{ done: number; total: number } | null>(null);
+  const [jumpTo, setJumpTo] = useState('');
+
+  // Anchor for shift-click range selection.
+  const selectionAnchor = useRef<number | null>(null);
+  const organizerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => () => releaseAllRenderDocs(), []);
 
   const handleUpload = useCallback(async (newFiles: File[]) => {
     setCarriedFrom(null);
-    const existingPageCount = pdfItems.reduce((sum, item) => sum + item.pageCount, 0);
-    const { valid, errors } = await validatePDFFiles(newFiles, pdfItems.length, existingPageCount);
+    const { valid, errors } = await validatePDFFiles(newFiles, sources.length, pages.length);
 
     if (valid.length > 0) {
-      const newItems: PDFPageItem[] = valid.map(({ file, pageCount }) => ({
-        id: `${file.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      const added: WorkspaceSource[] = valid.map(({ file, pageCount }) => ({
+        id: newSourceId(),
         file,
-        rotation: 0,
+        name: file.name,
         pageCount,
       }));
 
-      setPdfItems(prev => [...prev, ...newItems]);
+      setSources(prev => [...prev, ...added]);
+      setPages(prev => [...prev, ...added.flatMap(pagesForSource)]);
+      const total = added.reduce((sum, source) => sum + source.pageCount, 0);
       toast({
-        title: "PDFs added",
-        description: `${valid.length} file(s) added to the workspace`,
+        title: valid.length === 1 ? 'PDF added' : 'PDFs added',
+        description: `${total} ${total === 1 ? 'page' : 'pages'} added to the workspace.`,
       });
     }
 
     if (errors.length > 0) {
       toast({
-        title: valid.length > 0 ? "Some files were skipped" : "Upload failed",
+        title: valid.length > 0 ? 'Some files were skipped' : 'Upload failed',
         description: errors.slice(0, 3).join(' '),
-        variant: "destructive",
+        variant: 'destructive',
       });
     }
-  }, [pdfItems]);
+  }, [sources.length, pages.length]);
 
   // Carried PDFs join the workspace through the ordinary upload path.
   useEffect(() => {
     const carried = claimActivePdf();
     if (!carried) return;
     void handleUpload([carried.file]).then(() => setCarriedFrom(carried.meta));
-  }, [handleUpload]);
+    // Claim-once: this must not re-run when the upload handler changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Any edit invalidates a previous export, so the next-step offer never
   // carries a file that no longer matches what is on screen.
   useEffect(() => {
     setExported(null);
-  }, [pdfItems]);
+  }, [pages]);
 
   const handleRejected = useCallback((fileNames: string[]) => {
     toast({
-      title: "Some files were skipped",
+      title: 'Some files were skipped',
       description: `${fileNames.join(', ')}: not a PDF file.`,
-      variant: "destructive",
+      variant: 'destructive',
     });
   }, []);
 
-  // Only the ids are read; the grid's own item shape is not this page's concern.
-  const handleReorder = useCallback((newItems: { id: string }[]) => {
-    setPdfItems(prevItems => {
-      // Create a map for O(1) lookup
-      const itemMap = new Map(prevItems.map(item => [item.id, item]));
+  const documentName = sources.length === 1 ? sources[0].name : `merged-${Date.now()}.pdf`;
+  const currentIndex = currentPageId ? pages.findIndex(page => page.id === currentPageId) : -1;
+  const currentPage = currentIndex === -1 ? null : pages[currentIndex];
+  const currentSource = currentPage ? sources.find(source => source.id === currentPage.sourceId) ?? null : null;
 
-      const reordered = newItems
-        .map(uiItem => {
-          const original = itemMap.get(uiItem.id);
-          if (original) {
-            return original;
+  /* ---------------------------------------------------------------- pages */
+
+  const handleOpenPage = useCallback((pageId: string) => {
+    setCurrentPageId(pageId);
+    setViewMode('edit');
+  }, []);
+
+  const handleRotate = useCallback((pageId: string) => {
+    setPages(prev =>
+      prev.map(page => (page.id === pageId ? { ...page, rotation: (page.rotation + 90) % 360 } : page)),
+    );
+  }, []);
+
+  const removePages = useCallback((ids: Set<string>) => {
+    setPages(prev => {
+      const next = prev.filter(page => !ids.has(page.id));
+      setGroups(current => pruneGroups(current, next));
+      return next;
+    });
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => next.delete(id));
+      return next;
+    });
+    setCurrentPageId(prev => (prev && ids.has(prev) ? null : prev));
+  }, []);
+
+  const handleRemove = useCallback(
+    (pageId: string) => {
+      removePages(new Set([pageId]));
+    },
+    [removePages],
+  );
+
+  const handleAnnotationsChange = useCallback(
+    (annotations: Annotation[]) => {
+      if (!currentPageId) return;
+      setPages(prev => prev.map(page => (page.id === currentPageId ? { ...page, annotations } : page)));
+    },
+    [currentPageId],
+  );
+
+  /* ------------------------------------------------------------ selection */
+
+  const handleToggleSelect = useCallback(
+    (index: number, shiftKey: boolean) => {
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        const anchor = selectionAnchor.current;
+
+        if (shiftKey && anchor !== null) {
+          const [from, to] = anchor <= index ? [anchor, index] : [index, anchor];
+          for (let i = from; i <= to; i += 1) {
+            const page = pages[i];
+            if (page) next.add(page.id);
           }
-          return null;
-        })
-        .filter((item): item is PDFPageItem => item !== null);
+          return next;
+        }
 
-      return reordered;
-    });
+        const id = pages[index]?.id;
+        if (!id) return prev;
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        selectionAnchor.current = index;
+        return next;
+      });
+    },
+    [pages],
+  );
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    selectionAnchor.current = null;
   }, []);
 
-  const handleEdit = useCallback((id: string) => {
-    // Open the annotator directly on this document -- no forced splitting.
-    // PDFPageEditor handles navigation across all of the document's pages
-    // itself, so a multi-page PDF stays a single item here.
-    setSelectedPageId(id);
-    setViewMode('split');
-  }, []);
+  const selectedPages = useMemo(
+    () => pages.filter(page => selectedIds.has(page.id)),
+    [pages, selectedIds],
+  );
 
-  const handleSaveEdit = useCallback((newFile: File, targetId?: string) => {
-    const idToUpdate = targetId;
-    if (!idToUpdate) return;
+  /* --------------------------------------------------------------- groups */
 
-    setPdfItems(prev => prev.map(item => {
-      if (item.id === idToUpdate) {
-        // Rotation is a separate, pending transform applied at export time
-        // (see mergePDFs) -- annotating a page must not silently discard it.
-        return {
-          ...item,
-          file: newFile,
-        };
-      }
-      return item;
-    }));
+  const handleGroup = useCallback(() => {
+    if (selectedIds.size < 1) return;
+
+    const positions = pages.reduce<number[]>((acc, page, index) => {
+      if (selectedIds.has(page.id)) acc.push(index);
+      return acc;
+    }, []);
+
+    const id = newGroupId();
+    const { pages: next, moved } = groupPages(pages, selectedIds, id);
+
+    setPages(next);
+    setGroups(prev => [...prev, { id, name: defaultGroupName(positions), collapsed: false }]);
+    clearSelection();
 
     toast({
-      title: "Changes saved",
-      description: "Annotations saved to the PDF."
+      title: 'Pages grouped',
+      description: moved
+        ? `${positions.length} pages now sit together as one section. Grouping only organises the workspace — export still writes the pages in the order you see.`
+        : `${positions.length} pages grouped. Collapse the group to fold this part of the document away.`,
     });
+  }, [pages, selectedIds, clearSelection]);
+
+  const handleToggleGroup = useCallback((groupId: string) => {
+    setGroups(prev =>
+      prev.map(group => (group.id === groupId ? { ...group, collapsed: !group.collapsed } : group)),
+    );
   }, []);
 
-  const handleRotate = useCallback((id: string) => {
-    setPdfItems(prev => prev.map(item =>
-      item.id === id
-        ? { ...item, rotation: (item.rotation + 90) % 360 }
-        : item
-    ));
+  const handleRenameGroup = useCallback((groupId: string, name: string) => {
+    setGroups(prev => prev.map(group => (group.id === groupId ? { ...group, name } : group)));
   }, []);
 
-  const handleRemove = useCallback((id: string) => {
-    setPdfItems(prev => prev.filter(item => item.id !== id));
-    toast({
-      title: "File removed",
-    });
+  const handleUngroup = useCallback((groupId: string) => {
+    // Order is untouched -- only the marker is removed.
+    setPages(prev => prev.map(page => (page.groupId === groupId ? { ...page, groupId: null } : page)));
+    setGroups(prev => prev.filter(group => group.id !== groupId));
+  }, []);
+
+  const setAllCollapsed = useCallback((collapsed: boolean) => {
+    setGroups(prev => prev.map(group => ({ ...group, collapsed })));
+  }, []);
+
+  /* ---------------------------------------------------------------- files */
+
+  const handleClear = useCallback(() => {
+    if (!window.confirm('Clear the workspace? Your pages and annotations will be discarded.')) return;
+    releaseAllRenderDocs();
+    setSources([]);
+    setPages([]);
+    setGroups([]);
+    setCurrentPageId(null);
+    setViewMode('organize');
+    clearSelection();
+  }, [clearSelection]);
+
+  const handleRemoveSource = useCallback(
+    (sourceId: string) => {
+      releaseRenderDoc(sourceId);
+      setSources(prev => prev.filter(source => source.id !== sourceId));
+      setPages(prev => {
+        const next = prev.filter(page => page.sourceId !== sourceId);
+        setGroups(current => pruneGroups(current, next));
+        return next;
+      });
+      setCurrentPageId(null);
+    },
+    [],
+  );
+
+  /* --------------------------------------------------------------- output */
+
+  const withProcessing = useCallback(async <T,>(work: () => Promise<T>): Promise<T | null> => {
+    setIsProcessing(true);
+    try {
+      return await work();
+    } catch (error) {
+      console.error('PDF operation failed', error);
+      toast({
+        title: 'Something went wrong',
+        description: 'The document could not be written. Please try again.',
+        variant: 'destructive',
+      });
+      return null;
+    } finally {
+      setIsProcessing(false);
+    }
   }, []);
 
   const handleExport = useCallback(async () => {
-    if (pdfItems.length === 0) return;
+    if (pages.length === 0) return;
 
-    const blob = await mergePDFs(pdfItems);
+    const name = sources.length === 1 ? sources[0].name : `merged-${Date.now()}.pdf`;
+    const file = await withProcessing(() => buildPdfFile(pages, sources, name));
+    if (!file) return;
 
-    if (blob) {
-      const filename = pdfItems.length === 1 ? pdfItems[0].file.name : `merged-${Date.now()}.pdf`;
-      const file = pdfFileFrom(blob, filename);
-      downloadBlob(file, filename);
-      setExported(file);
-      toast({
-        title: "Export complete",
-        description: pdfItems.length === 1
-          ? `${filename} is ready.`
-          : `${pdfItems.length} files merged into ${filename}.`,
-      });
-    }
-  }, [pdfItems, mergePDFs]);
-
-  const handleExtractPages = useCallback(async () => {
-    if (pdfItems.length === 0) return;
-
-    const newItems: PDFPageItem[] = [];
-
-    for (const item of pdfItems) {
-      const blobs = await splitPDF(item.file);
-      blobs.forEach((blob, index) => {
-        const newFile = new File([blob], `${item.file.name.replace('.pdf', '')}-page-${index + 1}.pdf`, {
-          type: 'application/pdf'
-        });
-
-        newItems.push({
-          id: `${newFile.name}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          file: newFile,
-          rotation: 0,
-          pageCount: 1
-        });
-      });
-    }
-
-    setPdfItems(newItems);
+    downloadBlob(file, name);
+    setExported(file);
     toast({
-      title: "Pages extracted",
-      description: "Every page is now a separate item you can reorder."
+      title: 'Export complete',
+      description: `${name} — ${pages.length} ${pages.length === 1 ? 'page' : 'pages'}.`,
     });
-  }, [pdfItems, splitPDF]);
+  }, [pages, sources, withProcessing]);
 
-  // Adapt Items to UI Pages for the Grid
-  const uiPages = pdfItems.map((item, index) => ({
-    id: item.id,
-    pageNumber: index + 1,
-    rotation: item.rotation,
-    file: item.file
-  }));
+  const handleExtract = useCallback(async () => {
+    if (selectedPages.length === 0) return;
 
-  const handleSplitMode = async () => {
-    if (pdfItems.length === 0) return;
+    const name = `${baseName(documentName)}-extract.pdf`;
+    const file = await withProcessing(() => buildPdfFile(selectedPages, sources, name));
+    if (!file) return;
 
-    // Auto-extract pages if we have any multi-page docs
-    await handleExtractPages();
+    downloadBlob(file, name);
+    setExported(file);
+    toast({
+      title: 'Pages extracted',
+      description: `${selectedPages.length} ${selectedPages.length === 1 ? 'page' : 'pages'} saved as ${name}.`,
+    });
+  }, [selectedPages, sources, documentName, withProcessing]);
 
-    setViewMode('split');
-  };
+  const handleSplit = useCallback(
+    async (parts: SplitPart[]) => {
+      const result = await withProcessing(() =>
+        runSplit(parts, pages, sources, documentName, (done, total) => setSplitProgress({ done, total })),
+      );
+      setSplitProgress(null);
+      if (!result) return;
 
-  const hasFiles = pdfItems.length > 0;
-  const totalPages = pdfItems.reduce((sum, item) => sum + item.pageCount, 0);
-  const exportLabel = pdfItems.length >= 2 ? 'Merge & export' : 'Export PDF';
-  const selectedItem = pdfItems.find(i => i.id === selectedPageId) || null;
+      setSplitOpen(false);
+      // A single output is a real PDF the user can carry onward; a ZIP is not.
+      setExported(result.file);
+      toast({
+        title: 'Split complete',
+        description:
+          result.partCount === 1
+            ? `${result.fileName} is ready.`
+            : `${result.partCount} PDFs downloaded as ${result.fileName}.`,
+      });
+    },
+    [pages, sources, documentName, withProcessing],
+  );
 
-  const countSummary = `${pdfItems.length} ${pdfItems.length === 1 ? 'file' : 'files'} · ${totalPages} ${
-    totalPages === 1 ? 'page' : 'pages'
-  }`;
+  /* ----------------------------------------------------------- navigation */
+
+  const handleJump = useCallback(
+    (event: React.FormEvent) => {
+      event.preventDefault();
+      const target = Number(jumpTo);
+      if (!Number.isInteger(target) || target < 1 || target > pages.length) {
+        toast({
+          title: 'No such page',
+          description: `Enter a page between 1 and ${pages.length}.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const page = pages[target - 1];
+      // Jumping into a collapsed group has to open it, or there is nothing to
+      // scroll to.
+      if (page.groupId) {
+        setGroups(prev =>
+          prev.map(group => (group.id === page.groupId ? { ...group, collapsed: false } : group)),
+        );
+      }
+      setCurrentPageId(page.id);
+      setJumpTo('');
+
+      requestAnimationFrame(() => {
+        organizerRef.current
+          ?.querySelector(`[data-page-id="${page.id}"]`)
+          ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    },
+    [jumpTo, pages],
+  );
+
+  const hasPages = pages.length > 0;
+  const isMerge = sources.length > 1;
+  const exportLabel = isMerge ? 'Merge & export' : 'Export PDF';
+  const countSummary = isMerge
+    ? `${sources.length} files · ${pages.length} ${pages.length === 1 ? 'page' : 'pages'}`
+    : `${pages.length} ${pages.length === 1 ? 'page' : 'pages'}`;
 
   const exportButton = (
     <button
       onClick={handleExport}
-      disabled={isProcessing || !hasFiles}
-      className="focus-ring inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none"
+      disabled={isProcessing || !hasPages}
+      className="focus-ring inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
     >
       {isProcessing ? (
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -226,23 +399,130 @@ const Index = () => {
     </button>
   );
 
+  const selectionBar = (
+    <div className="sticky top-0 z-30 -mx-1 mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card/95 px-3 py-2 shadow-sm backdrop-blur">
+      <form onSubmit={handleJump} className="flex items-center gap-1.5">
+        <label htmlFor="jump-to-page" className="text-xs font-medium text-muted-foreground">
+          Go to
+        </label>
+        <input
+          id="jump-to-page"
+          value={jumpTo}
+          onChange={event => setJumpTo(event.target.value.replace(/\D/g, ''))}
+          inputMode="numeric"
+          placeholder={`1–${pages.length}`}
+          className="h-8 w-20 rounded-md border border-input bg-background px-2 text-sm tabular-nums shadow-sm focus:outline-none"
+        />
+      </form>
+
+      {groups.length > 0 && (
+        <>
+          <span className="hidden h-5 w-px bg-border sm:block" />
+          <button
+            type="button"
+            onClick={() => setAllCollapsed(true)}
+            className="focus-ring rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            Collapse all
+          </button>
+          <button
+            type="button"
+            onClick={() => setAllCollapsed(false)}
+            className="focus-ring rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            Expand all
+          </button>
+        </>
+      )}
+
+      <span className="hidden h-5 w-px bg-border sm:block" />
+      <button
+        type="button"
+        onClick={() => setSelectedIds(new Set(pages.map(page => page.id)))}
+        className="focus-ring rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+      >
+        Select all
+      </button>
+
+      <div className="flex-1" />
+
+      {selectedIds.size > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium tabular-nums text-foreground">
+            {selectedIds.size} selected
+          </span>
+          <button
+            type="button"
+            onClick={handleGroup}
+            className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-secondary"
+          >
+            <Layers className="h-3.5 w-3.5" aria-hidden="true" />
+            Group pages
+          </button>
+          <button
+            type="button"
+            onClick={handleExtract}
+            disabled={isProcessing}
+            className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-secondary disabled:opacity-50"
+            title="Save the selected pages as one new PDF"
+          >
+            <CornerUpRight className="h-3.5 w-3.5" aria-hidden="true" />
+            Extract
+          </button>
+          <button
+            type="button"
+            onClick={() => selectedIds.forEach(handleRotate)}
+            className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-secondary"
+          >
+            <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
+            Rotate
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(`Delete ${selectedIds.size} page(s)? This cannot be undone.`)) {
+                removePages(selectedIds);
+              }
+            }}
+            className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive hover:text-white"
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            Delete
+          </button>
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="focus-ring rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            aria-label="Clear selection"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </div>
+      ) : (
+        <span className="text-xs text-muted-foreground">
+          Tick pages to extract, group, rotate or delete them. Shift-click for a range.
+        </span>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex h-screen flex-col bg-background">
       <Header />
 
       <main className="flex-1 overflow-hidden">
-        {viewMode === 'grid' ? (
+        {viewMode === 'organize' ? (
           <div className="h-full overflow-y-auto">
             <div className="page-shell py-6 sm:py-8">
               <PageHeader
                 title="PDF Workspace"
                 description={
-                  hasFiles
+                  hasPages
                     ? undefined
-                    : 'Add PDFs to merge, split, reorder, rotate or annotate them — all in your browser.'
+                    : 'Add PDFs to organise, split, reorder, rotate or annotate their pages — all in your browser.'
                 }
                 meta={
-                  hasFiles ? (
+                  hasPages ? (
                     <span className="flex flex-wrap items-center gap-2">
                       <span>{countSummary}</span>
                       {carriedFrom && <CarriedFrom meta={carriedFrom} />}
@@ -250,19 +530,22 @@ const Index = () => {
                   ) : undefined
                 }
                 actions={
-                  hasFiles ? (
+                  hasPages ? (
                     <>
                       <button
-                        onClick={handleSplitMode}
-                        disabled={isProcessing}
-                        className="focus-ring inline-flex items-center gap-2 rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-secondary disabled:opacity-50 disabled:pointer-events-none"
+                        onClick={handleClear}
+                        className="focus-ring inline-flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                       >
-                        {isProcessing ? (
-                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                        ) : (
-                          <Scissors className="h-4 w-4" aria-hidden="true" />
-                        )}
-                        Split into pages
+                        Clear
+                      </button>
+                      <button
+                        onClick={() => setSplitOpen(true)}
+                        disabled={isProcessing}
+                        className="focus-ring inline-flex items-center gap-2 rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-secondary disabled:pointer-events-none disabled:opacity-50"
+                        title="Cut this document into several separate PDFs"
+                      >
+                        <Scissors className="h-4 w-4" aria-hidden="true" />
+                        Split…
                       </button>
                       {exportButton}
                     </>
@@ -271,25 +554,56 @@ const Index = () => {
               />
 
               <div className="mt-6">
-                <UploadZone onUpload={handleUpload} onRejected={handleRejected} hasFiles={hasFiles}>
+                <UploadZone onUpload={handleUpload} onRejected={handleRejected} hasFiles={hasPages}>
                   {({ open }) => (
-                    <>
-                      <h2 className="sr-only">Files in this workspace</h2>
-                      <PageGrid
-                        pages={uiPages}
-                        onReorder={handleReorder}
+                    <div ref={organizerRef}>
+                      <h2 className="sr-only">Pages in this document</h2>
+                      {selectionBar}
+                      <PageOrganizer
+                        pages={pages}
+                        groups={groups}
+                        sources={sources}
+                        selectedIds={selectedIds}
+                        currentPageId={currentPageId}
+                        onPagesChange={setPages}
+                        onOpenPage={handleOpenPage}
+                        onToggleSelect={handleToggleSelect}
                         onRotate={handleRotate}
                         onRemove={handleRemove}
-                        onEdit={handleEdit}
+                        onToggleGroup={handleToggleGroup}
+                        onRenameGroup={handleRenameGroup}
+                        onUngroup={handleUngroup}
                         onAdd={open}
                       />
 
+                      {isMerge && (
+                        <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-dashed border-border pt-4 text-sm">
+                          <span className="text-muted-foreground">Source files:</span>
+                          {sources.map(source => (
+                            <span
+                              key={source.id}
+                              className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium"
+                            >
+                              {source.name}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveSource(source.id)}
+                                className="focus-ring rounded-full text-muted-foreground hover:text-destructive"
+                                aria-label={`Remove every page from ${source.name}`}
+                              >
+                                <X className="h-3 w-3" aria-hidden="true" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
                       <p className="mt-6 flex items-center gap-2 border-t border-dashed border-border pt-4 text-sm text-muted-foreground">
                         <MousePointerSquareDashed className="h-4 w-4 shrink-0" aria-hidden="true" />
-                        Click a file to annotate its pages, drag the handle to reorder, or split it into
-                        individual pages.
+                        Click a page to annotate it, drag the handle to reorder, or tick pages to group,
+                        extract or delete them.
                       </p>
-                    </>
+                    </div>
                   )}
                 </UploadZone>
               </div>
@@ -299,7 +613,7 @@ const Index = () => {
                   <ResultActions
                     file={exported}
                     from="workspace"
-                    pageCount={totalPages}
+                    pageCount={pages.length}
                     onDownload={() => downloadBlob(exported, exported.name)}
                   />
                 </div>
@@ -307,21 +621,21 @@ const Index = () => {
             </div>
           </div>
         ) : (
-          /* Page-level editing view */
           <div className="flex h-full flex-col">
-            {/* Document-level toolbar */}
             <div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 sm:px-6">
               <div className="flex min-w-0 items-center gap-3">
                 <button
-                  onClick={() => setViewMode('grid')}
+                  onClick={() => setViewMode('organize')}
                   className="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 >
                   <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">Back to files</span>
+                  <span className="hidden sm:inline">All pages</span>
                 </button>
                 <span className="hidden h-5 w-px bg-border sm:block" />
                 <div className="min-w-0">
-                  <h1 className="truncate text-sm font-semibold text-foreground">Editor</h1>
+                  <h1 className="truncate text-sm font-semibold text-foreground">
+                    {currentIndex === -1 ? 'Editor' : `Page ${currentIndex + 1}`}
+                  </h1>
                   <p className="truncate text-xs text-muted-foreground">{countSummary}</p>
                 </div>
               </div>
@@ -330,35 +644,41 @@ const Index = () => {
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-              {/* Page list */}
-              <div className="flex max-h-56 w-full flex-col border-b border-border bg-muted/10 sm:h-full sm:max-h-none sm:w-64 sm:border-b-0 sm:border-r">
+              <div className="flex max-h-56 w-full flex-col border-b border-border bg-muted/10 sm:h-full sm:max-h-none sm:w-56 sm:border-b-0 sm:border-r">
                 <h2 className="border-b border-border bg-background px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Pages
                 </h2>
-                <div className="flex-1 overflow-y-auto p-3 sm:p-4">
-                  <SidebarList
-                    pages={uiPages}
-                    selectedId={selectedPageId}
-                    onSelect={setSelectedPageId}
-                    onReorder={handleReorder}
+                <div className="flex-1 overflow-y-auto p-3">
+                  <PageRail
+                    pages={pages}
+                    groups={groups}
+                    sources={sources}
+                    currentPageId={currentPageId}
+                    onSelect={setCurrentPageId}
+                    onToggleGroup={handleToggleGroup}
                   />
                 </div>
               </div>
 
-              {/* Editor */}
               <div className="relative flex min-h-0 flex-1 flex-col bg-background">
-                {selectedPageId ? (
+                {currentPage && currentSource ? (
                   <PDFPageEditor
-                    file={selectedItem?.file || null}
-                    onSave={(newFile) => handleSaveEdit(newFile, selectedPageId)}
-                    // Rotate/delete act on the whole file, so only expose them
-                    // here when the file is a single page -- for a multi-page
-                    // document they'd otherwise silently apply to every page.
-                    onRotate={selectedItem?.pageCount === 1 ? () => handleRotate(selectedPageId) : undefined}
-                    onDelete={selectedItem?.pageCount === 1 ? () => {
-                      handleRemove(selectedPageId);
-                      setSelectedPageId(null);
-                    } : undefined}
+                    file={currentSource.file}
+                    sourceId={currentSource.id}
+                    sourceIndex={currentPage.sourceIndex}
+                    annotations={currentPage.annotations}
+                    onAnnotationsChange={handleAnnotationsChange}
+                    onRotate={() => handleRotate(currentPage.id)}
+                    onDelete={() => handleRemove(currentPage.id)}
+                    onPrevPage={
+                      currentIndex > 0 ? () => setCurrentPageId(pages[currentIndex - 1].id) : undefined
+                    }
+                    onNextPage={
+                      currentIndex < pages.length - 1
+                        ? () => setCurrentPageId(pages[currentIndex + 1].id)
+                        : undefined
+                    }
+                    positionLabel={`Page ${currentIndex + 1} of ${pages.length}`}
                     className="h-full"
                   />
                 ) : (
@@ -368,8 +688,8 @@ const Index = () => {
                     </div>
                     <h3 className="text-lg font-medium text-foreground">Select a page to edit</h3>
                     <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-                      Choose a page from the list to annotate, rotate or delete it. Drag pages in the list to
-                      change their order.
+                      Choose a page from the rail to annotate, rotate or delete it. Reordering and grouping
+                      live in the page organiser.
                     </p>
                   </div>
                 )}
@@ -378,6 +698,16 @@ const Index = () => {
           </div>
         )}
       </main>
+
+      <SplitDialog
+        open={splitOpen}
+        onOpenChange={setSplitOpen}
+        pages={pages}
+        groups={groups}
+        isSplitting={isProcessing}
+        progress={splitProgress}
+        onSplit={handleSplit}
+      />
     </div>
   );
 };

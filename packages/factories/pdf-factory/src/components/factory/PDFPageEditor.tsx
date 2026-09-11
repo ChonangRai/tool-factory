@@ -7,7 +7,6 @@ import {
   Loader2,
   MousePointer2,
   RotateCw,
-  Save,
   Square,
   Trash2,
   Type,
@@ -15,61 +14,47 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import pdfjsLib from '@/lib/pdfWorker';
-import { pdfFile } from '@/lib/pdfBytes';
-
-/** A rectangle in ratio coordinates (0-1) relative to the page. */
-interface RatioRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-/**
- * The editor draws two kinds of annotation. Both carry a position in ratio
- * coordinates; only boxes carry a size, which is why the size and style fields
- * are optional rather than split across two interfaces -- the drawing and
- * export code reads them uniformly.
- */
-interface Annotation extends Partial<RatioRect> {
-  type: 'text' | 'rect';
-  x: number;
-  y: number;
-  color: string;
-  opacity?: number;
-  borderColor?: string;
-  borderWidth?: number;
-  text?: string;
-  fontSize?: number;
-  fontFamily?: string;
-}
+import { getRenderDoc } from '@/lib/pdfDocCache';
+import { getCssFontFamily, type Annotation, type RatioRect } from '@/lib/annotations';
 
 interface PDFPageEditorProps {
+  /** The source file the page lives in. */
   file: File | null;
-  onSave: (newFile: File) => void;
+  /** Cache key for that file, so switching pages never reparses it. */
+  sourceId: string | null;
+  /** 0-based index of the page to edit inside that file. */
+  sourceIndex: number;
+  /**
+   * The page's annotations, owned by the workspace. Keeping them out of this
+   * component is what lets them stay attached to their page while the user
+   * moves between pages, reorders them, or rotates them -- and what removed
+   * the Save step that used to rewrite the file and bounce the editor back to
+   * page one.
+   */
+  annotations: Annotation[];
+  onAnnotationsChange: (annotations: Annotation[]) => void;
   onRotate?: () => void;
   onDelete?: () => void;
+  /** Document-order navigation, driven by the organiser rather than the file. */
+  onPrevPage?: () => void;
+  onNextPage?: () => void;
+  positionLabel?: string;
   className?: string;
 }
 
-const hexToRgbTuple = (hex: string): [number, number, number] => {
-    // Basic hex parsing, supporting #RGB and #RRGGBB
-    let h = hex.replace('#', '');
-    if (h.length === 3) h = [...h].map(x => x + x).join('');
-    const r = parseInt(h.slice(0, 2), 16) / 255;
-    const g = parseInt(h.slice(2, 4), 16) / 255;
-    const b = parseInt(h.slice(4, 6), 16) / 255;
-    return [r, g, b];
-};
-
-const getCssFontFamily = (family: string) => {
-    if (family === 'Times-Roman') return '"Times New Roman", Times, serif';
-    if (family === 'Courier') return '"Courier New", Courier, monospace';
-    return 'Helvetica, Arial, sans-serif';
-};
-
-const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDFPageEditorProps) => {
+const PDFPageEditor = ({
+  file,
+  sourceId,
+  sourceIndex,
+  annotations,
+  onAnnotationsChange,
+  onRotate,
+  onDelete,
+  onPrevPage,
+  onNextPage,
+  positionLabel,
+  className = '',
+}: PDFPageEditorProps) => {
   const [tool, setTool] = useState<'none' | 'text' | 'rect' | 'select'>('select');
   const [color, setColor] = useState('#ef4444');
   const [borderSize, setBorderSize] = useState(2);
@@ -85,27 +70,21 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
 
   // State
   const [zoom, setZoom] = useState(1.0);
-  // Annotations are kept per page number (1-indexed, stable for the life of
-  // this editing session since pages aren't added/removed/reordered from
-  // within the editor itself) so navigating pages never mixes up content.
-  type AnnotationList = Annotation[];
-  const [annotationsByPage, setAnnotationsByPage] = useState<Record<number, AnnotationList>>({});
-  const [currentPage, setCurrentPage] = useState(1);
-  const [numPages, setNumPages] = useState(1);
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
 
-  const annotations = annotationsByPage[currentPage] ?? [];
+  // The latest annotations, so an updater callback never closes over a stale
+  // list when several edits land in the same gesture (drag, then resize).
+  const annotationsRef = useRef(annotations);
+  annotationsRef.current = annotations;
+
   const setAnnotations = useCallback(
-    (updater: AnnotationList | ((prev: AnnotationList) => AnnotationList)) => {
-      setAnnotationsByPage(prevMap => {
-        const prevForPage = prevMap[currentPage] ?? [];
-        const next = typeof updater === 'function' ? updater(prevForPage) : updater;
-        return { ...prevMap, [currentPage]: next };
-      });
+    (updater: Annotation[] | ((prev: Annotation[]) => Annotation[])) => {
+      const next = typeof updater === 'function' ? updater(annotationsRef.current) : updater;
+      annotationsRef.current = next;
+      onAnnotationsChange(next);
     },
-    [currentPage]
+    [onAnnotationsChange]
   );
-  const hasAnyAnnotations = Object.values(annotationsByPage).some(a => a.length > 0);
 
   // Handlers for selected item
   const deleteSelected = useCallback(() => {
@@ -173,17 +152,20 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
     setCurrentRect(null);
   };
 
-  // Load the document and reset per-session state whenever a new file is opened.
+  // Drawing state belongs to the page on screen, so drop it whenever the
+  // editor is pointed at a different page. Annotations are not touched here --
+  // they live in the workspace and are addressed by page.
   useEffect(() => {
-    setAnnotationsByPage({});
-    setCurrentPage(1);
-    setNumPages(1);
-    setZoom(1.0);
     setActiveTextDraft(null);
     resetTransientDrawState();
+  }, [sourceId, sourceIndex]);
+
+  // Load the source document. The cache means opening page 10 of a file whose
+  // page 1 is already on screen costs nothing.
+  useEffect(() => {
     pdfRef.current = null;
 
-    if (!file) {
+    if (!file || !sourceId) {
       setRenderKey(prev => prev + 1);
       return;
     }
@@ -192,11 +174,9 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
     setIsLoadingDoc(true);
     (async () => {
       try {
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+        const pdf = await getRenderDoc(sourceId, file);
         if (cancelled) return;
         pdfRef.current = pdf;
-        setNumPages(pdf.numPages);
       } catch (error) {
         console.error('Failed to load PDF for editing', error);
       } finally {
@@ -210,15 +190,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
     return () => {
       cancelled = true;
     };
-  }, [file]);
-
-  const goToPage = (page: number) => {
-    const clamped = Math.max(1, Math.min(numPages, page));
-    if (clamped === currentPage) return;
-    if (activeTextDraft) flushTextDraft();
-    resetTransientDrawState();
-    setCurrentPage(clamped);
-  };
+  }, [file, sourceId]);
 
   // Render the current page to the canvas whenever the page, zoom, or
   // underlying document changes.
@@ -230,7 +202,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
     if (pdf && canvasRef.current) {
       const renderPage = async () => {
         try {
-          const page = await pdf.getPage(currentPage);
+          const page = await pdf.getPage(sourceIndex + 1);
 
           if (!isActive) return;
 
@@ -270,7 +242,7 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
         renderTask.cancel();
       }
     };
-  }, [renderKey, currentPage, zoom]);
+  }, [renderKey, sourceIndex, zoom]);
 
   const getMousePosRatio = (e: React.MouseEvent) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
@@ -373,76 +345,6 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
     setIsDrawing(false);
   };
 
-  const handleSave = async () => {
-    if (!file || !hasAnyAnnotations) return;
-
-    try {
-      const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
-      const arrayBuffer = await file.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
-      const pages = pdfDoc.getPages();
-
-      const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      const timesRomanFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-      const courierFont = await pdfDoc.embedFont(StandardFonts.Courier);
-
-      const getFont = (family: string) => {
-         if (family === 'Times-Roman') return timesRomanFont;
-         if (family === 'Courier') return courierFont;
-         return helveticaFont;
-      };
-
-      for (const [pageNumStr, pageAnnotations] of Object.entries(annotationsByPage)) {
-        if (!pageAnnotations || pageAnnotations.length === 0) continue;
-
-        const targetPage = pages[Number(pageNumStr) - 1];
-        if (!targetPage) continue;
-
-        const { width, height } = targetPage.getSize();
-
-        for (const ann of pageAnnotations) {
-          const pdfX = ann.x * width;
-          const pdfY_Top = ann.y * height;
-
-          if (ann.type === 'rect') {
-             const w = ann.width * width;
-             const h = ann.height * height;
-
-             const [r, g, b] = hexToRgbTuple(ann.color || '#ff0000');
-             targetPage.drawRectangle({
-               x: pdfX,
-               y: height - pdfY_Top - h,
-               width: w,
-               height: h,
-               borderColor: ann.borderWidth > 0 ? rgb(r, g, b) : undefined,
-               color: rgb(r, g, b),
-               borderWidth: ann.borderWidth * 0.5, // Scale down border for PDF visually
-               opacity: ann.opacity ?? 0.25,
-             });
-          }
-          else if (ann.type === 'text') {
-             const size = ann.fontSize || 20;
-             const [r, g, b] = hexToRgbTuple(ann.color || '#ff0000');
-
-             targetPage.drawText(ann.text, {
-               x: pdfX,
-               y: height - pdfY_Top - (size * 0.8), // Adjust baseline visually
-               size: size,
-               font: getFont(ann.fontFamily),
-               color: rgb(r, g, b),
-             });
-          }
-        }
-      }
-
-      const pdfBytes = await pdfDoc.save();
-      const newFile = pdfFile(pdfBytes, file.name);
-      onSave(newFile);
-    } catch (e) {
-      console.error("Failed to save annotations", e);
-    }
-  };
-
   return (
     <div className={`flex flex-col h-full ${className}`}>
         {/* Toolbar */}
@@ -469,25 +371,31 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
             <Square className="mr-2 h-4 w-4" /> Box
           </Button>
 
-          {numPages > 1 && (
+          {positionLabel && (
             <div className="flex items-center gap-1 rounded-md bg-muted/50 px-1 py-1" title="Navigate pages">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => goToPage(currentPage - 1)}
-                disabled={currentPage <= 1}
+                onClick={() => {
+                  if (activeTextDraft) flushTextDraft();
+                  onPrevPage?.();
+                }}
+                disabled={!onPrevPage}
                 title="Previous page"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <span className="whitespace-nowrap px-1 text-xs font-medium tabular-nums text-foreground">
-                Page {currentPage} of {numPages}
+                {positionLabel}
               </span>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => goToPage(currentPage + 1)}
-                disabled={currentPage >= numPages}
+                onClick={() => {
+                  if (activeTextDraft) flushTextDraft();
+                  onNextPage?.();
+                }}
+                disabled={!onNextPage}
                 title="Next page"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -616,9 +524,13 @@ const PDFPageEditor = ({ file, onSave, onRotate, onDelete, className = '' }: PDF
 
           <div className="flex-1" />
 
-          <Button size="sm" onClick={handleSave} disabled={!hasAnyAnnotations}>
-            <Save className="mr-2 h-4 w-4" /> Save
-          </Button>
+          {/* No Save button: edits are held by the workspace and written into
+              the document when it is exported. */}
+          <span className="hidden text-xs text-muted-foreground sm:inline">
+            {annotations.length > 0
+              ? `${annotations.length} mark${annotations.length === 1 ? '' : 's'} on this page · applied on export`
+              : 'Edits are applied when you export'}
+          </span>
         </div>
 
         {/* Editor Canvas Area */}

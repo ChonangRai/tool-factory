@@ -44,10 +44,10 @@ export interface Tool {
 export const WORKSPACE_TOOL: Tool = {
   id: 'workspace',
   name: 'PDF Workspace',
-  description: 'Combine, split, reorder and annotate your documents in a single place.',
+  description: 'Organise, group, split and annotate the pages of your documents in one place.',
   icon: Layers,
   path: '/factory',
-  capabilities: ['Merge', 'Split & extract', 'Reorder', 'Rotate', 'Delete pages', 'Annotate'],
+  capabilities: ['Reorder pages', 'Group pages', 'Split & extract', 'Merge', 'Rotate', 'Annotate'],
   status: 'live',
   accepts: ['pdf'],
   produces: 'pdf',
