@@ -16,6 +16,9 @@ const QUARTER_TURN_HEIGHT = `${(THUMB_ASPECT_W / THUMB_ASPECT_H) * 100}%`;
 /** Wide enough to stay crisp on a retina card, small enough for 300 of them. */
 const THUMB_WIDTH = 220;
 
+/** A screen of lead-in, so scrolling rarely lands on an empty card. */
+const NEAR_MARGIN = 600;
+
 interface PageThumbProps {
   sourceId: string;
   file: File;
@@ -50,6 +53,17 @@ const PageThumb = ({ sourceId, file, sourceIndex, rotation, className = '' }: Pa
     const well = wellRef.current;
     if (!well || isNear) return;
 
+    // A background tab still computes layout, but it does not deliver
+    // IntersectionObserver callbacks -- so a document opened just before the
+    // user switched away would never even ask for its thumbnails, and would
+    // sit blank until they came back. Read the geometry once up front and
+    // leave the observer to cover scrolling, which only happens on screen.
+    const rect = well.getBoundingClientRect();
+    if (rect.bottom > -NEAR_MARGIN && rect.top < window.innerHeight + NEAR_MARGIN) {
+      setIsNear(true);
+      return;
+    }
+
     const observer = new IntersectionObserver(
       entries => {
         if (entries.some(entry => entry.isIntersecting)) {
@@ -57,8 +71,7 @@ const PageThumb = ({ sourceId, file, sourceIndex, rotation, className = '' }: Pa
           observer.disconnect();
         }
       },
-      // A screen of lead-in, so scrolling rarely lands on an empty card.
-      { rootMargin: '600px' },
+      { rootMargin: `${NEAR_MARGIN}px` },
     );
 
     observer.observe(well);
@@ -88,7 +101,14 @@ const PageThumb = ({ sourceId, file, sourceIndex, rotation, className = '' }: Pa
         canvas.width = viewport.width;
         canvas.height = viewport.height;
 
-        const task = page.render({ canvasContext: context, viewport, canvas });
+        // 'print' intent, as in PDF to Image: pdf.js only schedules its
+        // render continuations on requestAnimationFrame for 'display', and a
+        // background tab stops firing that. A thumbnail asked for while the
+        // tab is hidden would otherwise park half-drawn and stay blank --
+        // including the card jump-to-page has just scrolled to. The editor
+        // canvas keeps 'display' intent: it is interactive work that only
+        // matters while the tab is on screen.
+        const task = page.render({ canvasContext: context, viewport, canvas, intent: 'print' });
         renderTask = task;
         await task.promise;
         if (active) setIsRendered(true);

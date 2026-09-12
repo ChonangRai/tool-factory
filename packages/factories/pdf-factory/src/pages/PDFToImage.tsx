@@ -42,8 +42,7 @@ const renderPageToBlob = async (
   // 'print' intent renders the same flattened page, but pdf.js only schedules
   // its continuations on requestAnimationFrame for 'display' -- and a
   // background tab stops firing that, which would park a multi-page export
-  // mid-way. Thumbnails below stay on the default intent: they are on-screen
-  // preview work that only runs while the tab is visible anyway.
+  // mid-way. The thumbnail pass below uses it for the same reason.
   await page.render({ canvasContext: context, viewport, canvas, intent: 'print' }).promise;
 
   const mime = format === 'png' ? 'image/png' : 'image/jpeg';
