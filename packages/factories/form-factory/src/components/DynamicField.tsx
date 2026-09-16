@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { normalizeOptions } from '@/lib/fieldOptions';
 
 interface DynamicFieldProps {
   field: FormField;
@@ -74,8 +75,9 @@ export function DynamicField({ field, value, onChange, error }: DynamicFieldProp
               <SelectValue placeholder={field.placeholder || 'Select an option'} />
             </SelectTrigger>
             <SelectContent>
-              {field.options?.map((option, index) => (
-                <SelectItem key={index} value={option}>
+              {/* Distinct values only: Radix Select cannot tell duplicates apart. */}
+              {[...new Set(normalizeOptions(field.options))].map((option) => (
+                <SelectItem key={option} value={option}>
                   {option}
                 </SelectItem>
               ))}

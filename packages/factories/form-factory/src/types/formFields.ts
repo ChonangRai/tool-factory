@@ -17,7 +17,7 @@ export interface FormField {
   type: FieldType;         // Field type
   required: boolean;       // Validation
   order: number;           // Display order
-  options?: string[];      // For select/dropdown (comma-separated or array)
+  options?: string[];      // Select choices: distinct, trimmed labels (see lib/fieldOptions)
   placeholder?: string;    // Input placeholder
   defaultValue?: string | number | boolean;  // Default value
 }
@@ -72,7 +72,7 @@ export const defaultFieldTemplates: Record<FieldType, Omit<FormField, 'id' | 'or
     label: 'Dropdown',
     type: 'select',
     required: false,
-    options: ['Option 1', 'Option 2', 'Option 3'],
+    options: [],
   },
   checkbox: {
     label: 'Checkbox',

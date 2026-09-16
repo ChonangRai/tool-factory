@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -23,6 +22,8 @@ import {
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { GripVertical, Edit2, Trash2, Plus } from 'lucide-react';
+import { OptionsEditor } from './OptionsEditor';
+import { duplicateOptionIndexes, normalizeOptions } from '@/lib/fieldOptions';
 
 interface FormFieldEditorProps {
   fields: FormField[];
@@ -33,6 +34,13 @@ export function FormFieldEditor({ fields, onChange }: FormFieldEditorProps) {
   const [isAddFieldOpen, setIsAddFieldOpen] = useState(false);
   const [editingField, setEditingField] = useState<FormField | null>(null);
   const [fieldFormData, setFieldFormData] = useState<Partial<FormField>>({});
+  const [fieldError, setFieldError] = useState<string | null>(null);
+
+  const openFieldEditor = (field: FormField) => {
+    setEditingField(field);
+    setFieldFormData(field.type === 'select' ? { ...field, options: normalizeOptions(field.options) } : field);
+    setFieldError(null);
+  };
 
   const handleAddField = (type: FieldType) => {
     const template = defaultFieldTemplates[type];
@@ -41,15 +49,29 @@ export function FormFieldEditor({ fields, onChange }: FormFieldEditorProps) {
       id: generateFieldId(),
       order: fields.length + 1,
     };
-    setFieldFormData(newField);
-    setEditingField(newField);
+    openFieldEditor(newField);
     setIsAddFieldOpen(false);
   };
 
   const handleSaveField = () => {
-    if (!fieldFormData.label || !fieldFormData.type) return;
+    if (!fieldFormData.label?.trim() || !fieldFormData.type) {
+      setFieldError('Field label is required.');
+      return;
+    }
 
-    const field = fieldFormData as FormField;
+    const field = { ...fieldFormData } as FormField;
+    if (field.type === 'select') {
+      const raw = (field.options ?? []).map((o) => o.trim());
+      // The options editor already flags duplicates inline.
+      if (duplicateOptionIndexes(raw).size > 0) return;
+      field.options = normalizeOptions(raw);
+      if (field.options.length === 0) {
+        setFieldError('Add at least one option.');
+        return;
+      }
+    } else {
+      delete field.options;
+    }
     
     if (editingField && fields.find(f => f.id === editingField.id)) {
       // Update existing
@@ -61,6 +83,7 @@ export function FormFieldEditor({ fields, onChange }: FormFieldEditorProps) {
     
     setEditingField(null);
     setFieldFormData({});
+    setFieldError(null);
   };
 
   const handleDeleteField = (fieldId: string) => {
@@ -131,10 +154,7 @@ export function FormFieldEditor({ fields, onChange }: FormFieldEditorProps) {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      setEditingField(field);
-                      setFieldFormData(field);
-                    }}
+                    onClick={() => openFieldEditor(field)}
                   >
                     <Edit2 className="h-4 w-4" />
                   </Button>
@@ -228,15 +248,14 @@ export function FormFieldEditor({ fields, onChange }: FormFieldEditorProps) {
 
             {fieldFormData.type === 'select' && (
               <div className="grid gap-2">
-                <Label>Options (one per line)</Label>
-                <Textarea
-                  value={fieldFormData.options?.join('\n') || ''}
-                  onChange={(e) => setFieldFormData({ 
-                    ...fieldFormData, 
-                    options: e.target.value.split('\n').filter(o => o.trim()) 
-                  })}
-                  placeholder="Option 1&#10;Option 2&#10;Option 3"
-                  rows={5}
+                <Label>Options</Label>
+                <OptionsEditor
+                  key={editingField?.id}
+                  value={normalizeOptions(fieldFormData.options)}
+                  onChange={(options) => {
+                    setFieldFormData((prev) => ({ ...prev, options }));
+                    setFieldError(null);
+                  }}
                 />
               </div>
             )}
@@ -252,6 +271,7 @@ export function FormFieldEditor({ fields, onChange }: FormFieldEditorProps) {
               </label>
             </div>
           </div>
+          {fieldError && <p className="text-sm text-destructive">{fieldError}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setEditingField(null)}>Cancel</Button>
             <Button type="button" onClick={handleSaveField}>Save Field</Button>
