@@ -63,7 +63,7 @@ export const submitForm = (
   formId: string,
   capability: string,
   data: Record<string, unknown>,
-  files: { ticket_id: string; filename: string }[]
+  files: { ticket_id: string; filename: string; field_id?: string }[]
 ) =>
   call<{ submission_id: string; receipt_ticket_id?: string }>({
     action: 'submit',

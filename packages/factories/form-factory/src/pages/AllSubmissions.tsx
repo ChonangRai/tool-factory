@@ -13,6 +13,8 @@ import {
   Filter,
   Eye,
   Archive,
+  FileText,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import {
@@ -37,6 +39,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { storage } from '@/lib/storage';
+import { SubmissionDetail } from '@/components/SubmissionDetail';
+import { downloadCsv } from '@/lib/csv';
+import {
+  formatAnswer,
+  resolveAnswers,
+  resolveColumns,
+  type SnapshotField,
+} from '@/lib/submissionAnswers';
+import type { FormField } from '@/types/formFields';
 
 interface Submission {
   id: string;
@@ -48,22 +59,27 @@ interface Submission {
   amount: number;
   status: string;
   created_at: string;
+  data: Record<string, unknown> | null;
+  field_snapshot: SnapshotField[] | null;
   files: Array<{
     id: string;
     filename: string;
     path: string;
     mime: string;
+    field_id: string | null;
   }>;
   forms?: {
     name: string;
+    settings: { fields?: FormField[] } | null;
   };
 }
 
 export default function AllSubmissions() {
   const [searchParams, setSearchParams] = useSearchParams();
   const formId = searchParams.get('form_id');
+  const openSubmissionId = searchParams.get('submission');
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [forms, setForms] = useState<{ id: string; name: string }[]>([]);
+  const [forms, setForms] = useState<{ id: string; name: string; settings: { fields?: FormField[] } | null }[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -79,8 +95,8 @@ export default function AllSubmissions() {
   }, [formId]);
 
   const loadForms = async () => {
-    const { data } = await supabase.from('forms').select('id, name').order('name');
-    if (data) setForms(data);
+    const { data } = await supabase.from('forms').select('id, name, settings').order('name');
+    if (data) setForms(data as unknown as typeof forms);
   };
 
   const loadSubmissions = async () => {
@@ -89,8 +105,8 @@ export default function AllSubmissions() {
         .from('submissions')
         .select(`
           *,
-          files (id, filename, path, mime),
-          forms (name)
+          files (id, filename, path, mime, field_id),
+          forms (name, settings)
         `)
         .is('deleted_at', null);
       
@@ -190,6 +206,33 @@ export default function AllSubmissions() {
     return matchesSearch && matchesStatus;
   });
 
+  const setOpenSubmission = (id: string | null) => {
+    const next = new URLSearchParams(searchParams);
+    if (id) next.set('submission', id);
+    else next.delete('submission');
+    setSearchParams(next, { replace: true });
+  };
+  const openSubmission = submissions.find((s) => s.id === openSubmissionId) ?? null;
+
+  // Client-side: rows are already loaded under the caller's RLS scope, and
+  // attachments are exported by filename only (never signed URLs).
+  const handleExportCsv = () => {
+    if (!formId) return;
+    const form = forms.find((f) => f.id === formId);
+    const columns = resolveColumns(form?.settings?.fields ?? [], filteredSubmissions);
+    const rows = [
+      ['Submission ID', 'Submitted at', 'Status', ...columns.map((c) => c.label)],
+      ...filteredSubmissions.map((s) => [
+        s.id,
+        new Date(s.created_at).toISOString(),
+        s.status ?? '',
+        ...resolveAnswers(columns, s).map(formatAnswer),
+      ]),
+    ];
+    const slug = (form?.name || 'form').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'form';
+    downloadCsv(`${slug}-submissions-${format(new Date(), 'yyyy-MM-dd')}.csv`, rows);
+  };
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -287,6 +330,16 @@ export default function AllSubmissions() {
                 {filteredSubmissions.length} submission{filteredSubmissions.length !== 1 ? 's' : ''} found
               </CardDescription>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCsv}
+              disabled={!formId || filteredSubmissions.length === 0}
+              title={formId ? 'Export the listed submissions' : 'Select a form to export'}
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
           </div>
         </CardHeader>
         <CardContent>
@@ -348,6 +401,14 @@ export default function AllSubmissions() {
                         <Button
                           variant="ghost"
                           size="sm"
+                          onClick={() => setOpenSubmission(submission.id)}
+                          aria-label="View submission"
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => handleDownloadReceipt(submission.files[0])}
                           disabled={!submission.files || submission.files.length === 0}
                         >
@@ -370,6 +431,13 @@ export default function AllSubmissions() {
           </div>
         </CardContent>
       </Card>
+
+      <SubmissionDetail
+        submission={openSubmission}
+        onOpenChange={(open) => !open && setOpenSubmission(null)}
+        onView={handleViewReceipt}
+        onDownload={handleDownloadReceipt}
+      />
 
       {/* Attachment Preview Dialog */}
       <Dialog open={!!previewReceipt} onOpenChange={() => setPreviewReceipt(null)}>

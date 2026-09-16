@@ -148,6 +148,7 @@ export default function SubmitReceipt() {
           uploadedFiles.push({
             ticket_id: ticket.ticket_id,
             filename: file.name,
+            field_id: field.id,
           });
 
           // Replace file object with path in formData

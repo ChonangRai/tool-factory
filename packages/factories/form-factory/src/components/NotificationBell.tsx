@@ -22,7 +22,9 @@ export function NotificationBell() {
     
     // Navigate based on notification type
     if (notification.data?.form_id) {
-      navigate('/dashboard/submissions');
+      const params = new URLSearchParams({ form_id: notification.data.form_id });
+      if (notification.data.submission_id) params.set('submission', notification.data.submission_id);
+      navigate(`/dashboard/submissions?${params}`);
     }
   };
 

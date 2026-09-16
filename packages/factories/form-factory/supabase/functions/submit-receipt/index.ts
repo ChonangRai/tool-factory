@@ -4,6 +4,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 // @ts-ignore
 import { Resend } from "npm:resend";
+import { buildReceiptEmail } from "./render.ts";
 
 declare const Deno: any;
 
@@ -11,18 +12,6 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Minimal HTML escaping for every untrusted value interpolated into the
-// email body below (submitter-entered field labels/values, description,
-// form name). Never build HTML from unescaped user input.
-function escapeHtml(value: unknown): string {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 // @ts-ignore
 serve(async (req: Request) => {
@@ -80,7 +69,8 @@ serve(async (req: Request) => {
         .from('submissions')
         .select(`
           *,
-          forms (name, settings)
+          forms (name),
+          files (filename, field_id)
         `)
         .eq('id', claim.submission_id)
         .single();
@@ -148,44 +138,14 @@ async function sendEmailNotifications(submission: any) {
       throw new Error('Submission has no email address, cannot send notification');
     }
 
-    const formName = escapeHtml(submission.forms?.name || 'Form Submission');
-    const formFields = submission.forms?.settings?.fields || [];
-
-    const fieldMap = new Map(formFields.map((f: any) => [f.id, f.label]));
-
-    let fieldsHtml = '';
-    const submissionData = submission.data || {};
-
-    formFields.forEach((field: any) => {
-      if (field.type === 'file') return;
-
-      const value = submissionData[field.id];
-      if (value !== undefined && value !== null && value !== '') {
-        fieldsHtml += `<li><strong>${escapeHtml(field.label)}:</strong> ${escapeHtml(value)}</li>`;
-      }
-    });
-
-    if (!fieldsHtml) {
-      if (submission.amount) fieldsHtml += `<li><strong>Amount:</strong> ${escapeHtml(submission.amount)}</li>`;
-      if (submission.description) fieldsHtml += `<li><strong>Description:</strong> ${escapeHtml(submission.description)}</li>`;
-    }
-
-    const emailContent = `
-      <h1>${formName} - Receipt Confirmed</h1>
-      <p>Thank you for your submission. Here are the details we received:</p>
-      <ul>
-        ${fieldsHtml}
-        <li><strong>Submission ID:</strong> ${escapeHtml(submission.id)}</li>
-        <li><strong>Date:</strong> ${escapeHtml(new Date(submission.created_at).toLocaleDateString())}</li>
-      </ul>
-      <p>Your submission is now under review.</p>
-    `;
+    const { subject, html, text } = buildReceiptEmail(submission);
 
     const { data, error } = await resend.emails.send({
       from: emailFrom,
       to: [targetEmail],
-      subject: `${submission.forms?.name || 'Form Submission'} - Receipt Submission Confirmed`,
-      html: emailContent,
+      subject,
+      html,
+      text,
     });
 
     if (error) {
