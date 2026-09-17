@@ -23,6 +23,11 @@ export interface NormalizedSettings {
   version: number;
   sections: FormSection[];
   fields: FormField[];
+  /**
+   * Whether submitters may keep unfinished answers in their own browser.
+   * On unless the collector turns it off for a sensitive form.
+   */
+  saveProgress: boolean;
 }
 
 export interface SectionWithFields {
@@ -115,6 +120,7 @@ export function normalizeFormSettings(raw: unknown): NormalizedSettings {
     version: SETTINGS_VERSION,
     sections: sections.map((s, i) => ({ ...s, order: i })),
     fields: ordered.map((f, i) => ({ ...f, order: i })),
+    saveProgress: settings.saveProgress !== false,
   };
 }
 
@@ -130,6 +136,7 @@ export function groupFieldsBySection(settings: NormalizedSettings): SectionWithF
 export function toStoredSettings(settings: NormalizedSettings) {
   return {
     version: SETTINGS_VERSION,
+    saveProgress: settings.saveProgress !== false,
     sections: settings.sections.map((s, i) => ({
       id: s.id,
       title: s.title,

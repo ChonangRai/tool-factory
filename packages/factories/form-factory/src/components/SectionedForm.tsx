@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Pencil } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Pencil, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DynamicField } from './DynamicField';
@@ -12,6 +12,7 @@ import {
 } from '@/lib/formSections';
 import { validateFields } from '@/lib/formValidation';
 import { formatAnswer } from '@/lib/submissionAnswers';
+import { clearDraft, computeFingerprint, loadDraft, saveDraft } from '@/lib/formDraft';
 
 interface SectionedFormProps {
   settings: NormalizedSettings;
@@ -27,6 +28,11 @@ interface SectionedFormProps {
   /** Rendered on the last step, above the submit button (receipt opt-in, Turnstile). */
   children?: React.ReactNode;
   submitLabel?: string;
+  /**
+   * Form id to keep unfinished answers under, in this browser only. Omitted
+   * (the builder preview) means nothing is stored.
+   */
+  draftFormId?: string;
 }
 
 // The one renderer for a form definition: public submission, and the
@@ -40,10 +46,16 @@ export function SectionedForm({
   submitDisabled = false,
   children,
   submitLabel = 'Submit form',
+  draftFormId,
 }: SectionedFormProps) {
   const groups = useMemo(() => groupFieldsBySection(settings), [settings]);
   const hasReview = groups.length > 1;
   const stepCount = groups.length + (hasReview ? 1 : 0);
+
+  // Progress is kept only when the collector allows it and we know the form.
+  const persistDraft = Boolean(draftFormId) && settings.saveProgress;
+  const fingerprint = useMemo(() => computeFingerprint(settings), [settings]);
+  const [draftNotice, setDraftNotice] = useState<'restored' | 'schema-changed' | null>(null);
 
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -52,6 +64,43 @@ export function SectionedForm({
   const [focusFieldId, setFocusFieldId] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const movedRef = useRef(false);
+
+  // Restore once, before anything is typed. A draft written against a
+  // different definition is dropped rather than mapped onto the new one.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || !draftFormId) return;
+    restoredRef.current = true;
+    if (!settings.saveProgress) {
+      clearDraft(draftFormId);
+      return;
+    }
+    const result = loadDraft(draftFormId, fingerprint);
+    if (result.status === 'restored') {
+      setValues(result.draft.values);
+      setStep(Math.min(result.draft.step, groups.length + (hasReview ? 1 : 0) - 1));
+      setDraftNotice('restored');
+    } else if (result.status === 'schema-changed') {
+      setDraftNotice('schema-changed');
+    }
+  }, [draftFormId, settings.saveProgress, fingerprint, groups.length, hasReview]);
+
+  // Debounced so typing does not write on every keystroke; the step is part
+  // of the draft, so Back/Next moves the saved location too.
+  useEffect(() => {
+    if (!persistDraft || !restoredRef.current) return;
+    const id = window.setTimeout(() => saveDraft(draftFormId!, fingerprint, step, values), 600);
+    return () => window.clearTimeout(id);
+  }, [persistDraft, draftFormId, fingerprint, step, values]);
+
+  const handleClearDraft = () => {
+    if (draftFormId) clearDraft(draftFormId);
+    setValues({});
+    setErrors({});
+    setStep(0);
+    setDraftNotice(null);
+    // Saving stays on: an empty draft simply removes the key again.
+  };
 
   const onReview = hasReview && step === groups.length;
   const current: SectionWithFields | undefined = groups[step];
@@ -119,6 +168,7 @@ export function SectionedForm({
   };
 
   const isLastStep = step === stepCount - 1;
+  const hasFileField = settings.fields.some((f) => f.type === 'file');
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -139,6 +189,8 @@ export function SectionedForm({
       reportErrors(allErrors, firstBad >= 0 ? groups[firstBad].fields : settings.fields);
       return;
     }
+    // The draft is cleared by the caller once the submission is accepted, so
+    // a failed submit does not lose what was typed.
     onSubmit(values);
   };
 
@@ -146,6 +198,39 @@ export function SectionedForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6" noValidate>
       <p aria-live="polite" className="sr-only">{announcement}</p>
+
+      {draftNotice && (
+        <div className="flex flex-wrap items-start gap-2 rounded-md border bg-muted/40 p-3 text-sm">
+          <Save className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            {draftNotice === 'restored' ? (
+              <>
+                <p className="font-medium">Progress restored from this device</p>
+                <p className="text-muted-foreground">
+                  Unfinished answers are kept in this browser for 24 hours and are not submitted yet.
+                  {hasFileField && ' Any files you picked before need to be selected again.'}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium">This form changed since you last visited</p>
+                <p className="text-muted-foreground">
+                  Your earlier saved answers no longer fit the form, so they were not restored.
+                </p>
+              </>
+            )}
+          </div>
+          {draftNotice === 'restored' ? (
+            <Button type="button" variant="ghost" size="sm" onClick={handleClearDraft}>
+              Clear saved progress
+            </Button>
+          ) : (
+            <Button type="button" variant="ghost" size="sm" onClick={() => setDraftNotice(null)} aria-label="Dismiss">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      )}
 
       {stepCount > 1 && (
         <div className="space-y-2">

@@ -11,6 +11,7 @@ import TurnstileGate, { type TurnstileGateHandle } from '@/components/TurnstileG
 import { verifyHuman, requestUploadTicket, submitForm as submitViaGate, AnonGateError } from '@/lib/anonGate';
 import { SectionedForm } from '@/components/SectionedForm';
 import { normalizeFormSettings, type NormalizedSettings } from '@/lib/formSections';
+import { clearDraft } from '@/lib/formDraft';
 import { storage } from '@/lib/storage';
 import { processReceiptImage } from '@/utils/ocr';
 import {
@@ -196,6 +197,8 @@ export default function SubmitReceipt() {
         });
       }
 
+      // Accepted: the locally saved answers have served their purpose.
+      clearDraft(formId);
       setSubmitted(true);
       toast.success('Submission successful!');
     } catch (error: any) {
@@ -318,6 +321,7 @@ export default function SubmitReceipt() {
         <div className="space-y-6">
           <SectionedForm
             settings={settings}
+            draftFormId={formId}
             onSubmit={handleSubmit}
             isSubmitting={loading || validatingImage}
             submitDisabled={!humanVerified}

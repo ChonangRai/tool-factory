@@ -6,6 +6,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { ArrowLeft, Save, Loader2, Layout, Eye } from 'lucide-react';
 import { FormFieldEditor } from '@/components/FormFieldEditor';
@@ -214,6 +216,23 @@ export default function FormBuilder() {
               <div className="text-sm text-muted-foreground">
                 Group questions into sections. Submitters answer one section at a time, then review
                 everything before submitting.
+              </div>
+
+              <div className="mt-4 flex items-start gap-2 border-t pt-4">
+                <Checkbox
+                  id="save-progress"
+                  checked={settings.saveProgress}
+                  onCheckedChange={(checked) => setSettings({ ...settings, saveProgress: !!checked })}
+                />
+                <div className="grid gap-1">
+                  <Label htmlFor="save-progress" className="cursor-pointer text-sm font-medium">
+                    Save progress on this device
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Lets submitters come back to unfinished answers for 24 hours, kept in their own
+                    browser. Turn off for sensitive forms or shared computers.
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
