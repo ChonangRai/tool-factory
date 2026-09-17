@@ -20,9 +20,12 @@ export interface FormField {
   options?: string[];      // Select choices: distinct, trimmed labels (see lib/fieldOptions)
   placeholder?: string;    // Input placeholder
   defaultValue?: string | number | boolean;  // Default value
+  sectionId?: string;      // Owning section (see lib/formSections)
 }
 
 export interface FormSettings {
+  version?: number;
+  sections?: { id: string; title: string; description?: string; order: number }[];
   fields: FormField[];
 }
 

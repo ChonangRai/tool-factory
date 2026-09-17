@@ -7,13 +7,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { ArrowLeft, Save, Loader2, Layout } from 'lucide-react';
+import { ArrowLeft, Save, Loader2, Layout, Eye } from 'lucide-react';
 import { FormFieldEditor } from '@/components/FormFieldEditor';
-import { FormField } from '@/types/formFields';
+import { SectionedForm } from '@/components/SectionedForm';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  normalizeFormSettings,
+  toStoredSettings,
+  type NormalizedSettings,
+} from '@/lib/formSections';
 
-interface FormSettings {
-  fields: FormField[];
-}
+type FormSettings = ReturnType<typeof toStoredSettings>;
 
 interface Form {
   id: string;
@@ -35,7 +45,8 @@ export default function FormBuilder() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [formName, setFormName] = useState('');
-  const [fields, setFields] = useState<FormField[]>([]);
+  const [settings, setSettings] = useState<NormalizedSettings>(() => normalizeFormSettings(null));
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   
   // Track original data for edit mode
   const [originalForm, setOriginalForm] = useState<Form | null>(null);
@@ -63,11 +74,9 @@ export default function FormBuilder() {
       if (data) {
         setOriginalForm(data as any);
         setFormName(data.name);
-        // Safely parse settings and fields
-        const settings = data.settings as unknown as FormSettings | null;
-        if (settings?.fields) {
-          setFields(settings.fields);
-        }
+        // One normalizer for every consumer: a pre-sections form arrives here
+        // as a single unnamed section and is only rewritten when saved.
+        setSettings(normalizeFormSettings(data.settings));
       }
     } catch (error: any) {
       console.error('Error loading form:', error);
@@ -87,7 +96,7 @@ export default function FormBuilder() {
       toast.error('Form name is required');
       return;
     }
-    if (fields.length === 0) {
+    if (settings.fields.length === 0) {
       toast.error('Please add at least one field to the form');
       return;
     }
@@ -100,9 +109,7 @@ export default function FormBuilder() {
           .from('forms')
           .update({
             name: formName,
-            settings: {
-              fields: fields as any,
-            },
+            settings: toStoredSettings(settings) as any,
           })
           .eq('id', formId);
 
@@ -115,9 +122,7 @@ export default function FormBuilder() {
           name: formName,
           slug: slug,
           folder_id: folderId || null,
-          settings: {
-            fields: fields as any,
-          },
+          settings: toStoredSettings(settings),
         };
 
         if (organizationId) {
@@ -175,6 +180,10 @@ export default function FormBuilder() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setIsPreviewOpen(true)} disabled={settings.fields.length === 0}>
+            <Eye className="mr-2 h-4 w-4" />
+            Preview
+          </Button>
           <Button variant="outline" onClick={handleCancel}>
             Cancel
           </Button>
@@ -197,12 +206,14 @@ export default function FormBuilder() {
                 Structure
               </CardTitle>
               <CardDescription>
-                {fields.length} field{fields.length !== 1 ? 's' : ''} added
+                {settings.sections.length} section{settings.sections.length !== 1 ? 's' : ''} ·{' '}
+                {settings.fields.length} field{settings.fields.length !== 1 ? 's' : ''}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="text-sm text-muted-foreground">
-                Drag and drop fields to reorder. Configure properties using the edit button.
+                Group questions into sections. Submitters answer one section at a time, then review
+                everything before submitting.
               </div>
             </CardContent>
           </Card>
@@ -210,9 +221,25 @@ export default function FormBuilder() {
 
         {/* Editor Area (Right Column) */}
         <div className="md:col-span-3">
-          <FormFieldEditor fields={fields} onChange={setFields} />
+          <FormFieldEditor settings={settings} onChange={setSettings} />
         </div>
       </div>
+
+      {/* Preview uses the same renderer as the public form -- no second model. */}
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{formName || 'Form preview'}</DialogTitle>
+            <DialogDescription>
+              This is how submitters will move through the form. Nothing is submitted from here.
+            </DialogDescription>
+          </DialogHeader>
+          <SectionedForm
+            settings={settings}
+            onSubmit={() => toast.info('Preview only — nothing was submitted')}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

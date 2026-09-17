@@ -8,9 +8,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import type { FormField } from '@/types/formFields';
 import {
   formatAnswer,
+  groupAnswersBySection,
   hasStoredAnswers,
   isAnswered,
   resolveAnswers,
@@ -18,25 +18,28 @@ import {
   type SubmissionFile,
   type SubmissionRecord,
 } from '@/lib/submissionAnswers';
+import { normalizeFormSettings } from '@/lib/formSections';
 
 interface SubmissionDetailProps {
-  submission: (SubmissionRecord & { forms?: { name?: string; settings?: { fields?: FormField[] } | null } | null }) | null;
+  submission: (SubmissionRecord & { forms?: { name?: string; settings?: unknown } | null }) | null;
   onOpenChange: (open: boolean) => void;
   onView: (file: SubmissionFile) => void;
   onDownload: (file: SubmissionFile) => void;
 }
 
 export function SubmissionDetail({ submission, onOpenChange, onView, onDownload }: SubmissionDetailProps) {
-  const formFields: FormField[] = submission?.forms?.settings?.fields ?? [];
   const legacy = submission ? !hasStoredAnswers(submission) : false;
   const answers = submission
     ? resolveAnswers(
         // Legacy rows have no snapshot and no stored answers: only list their
         // attachments rather than a column of misleading blanks.
-        resolveColumns(legacy ? [] : formFields, [submission]),
+        resolveColumns(legacy ? [] : normalizeFormSettings(submission.forms?.settings), [submission]),
         submission
       )
     : [];
+  // Grouped by the section titles captured at submit time, so later renames
+  // or moves do not rewrite history.
+  const sections = groupAnswersBySection(answers);
 
   const summary = submission
     ? [
@@ -67,7 +70,14 @@ export function SubmissionDetail({ submission, onOpenChange, onView, onDownload 
                   </AnswerRow>
                 ))}
 
-              {answers.map((answer) => (
+              {sections.map((group, groupIndex) => (
+                <div key={`${group.title}-${groupIndex}`} className="space-y-4">
+                  {group.title && (
+                    <h3 className="pt-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                      {group.title}
+                    </h3>
+                  )}
+                  {group.answers.map((answer) => (
                 <AnswerRow key={answer.id} label={answer.label}>
                   {answer.type === 'file' ? (
                     answer.files.length ? (
@@ -98,6 +108,8 @@ export function SubmissionDetail({ submission, onOpenChange, onView, onDownload 
                     <Unanswered />
                   )}
                 </AnswerRow>
+                  ))}
+                </div>
               ))}
             </dl>
 

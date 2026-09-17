@@ -47,7 +47,7 @@ import {
   resolveColumns,
   type SnapshotField,
 } from '@/lib/submissionAnswers';
-import type { FormField } from '@/types/formFields';
+import { normalizeFormSettings } from '@/lib/formSections';
 
 interface Submission {
   id: string;
@@ -70,7 +70,7 @@ interface Submission {
   }>;
   forms?: {
     name: string;
-    settings: { fields?: FormField[] } | null;
+    settings: unknown;
   };
 }
 
@@ -79,7 +79,7 @@ export default function AllSubmissions() {
   const formId = searchParams.get('form_id');
   const openSubmissionId = searchParams.get('submission');
   const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [forms, setForms] = useState<{ id: string; name: string; settings: { fields?: FormField[] } | null }[]>([]);
+  const [forms, setForms] = useState<{ id: string; name: string; settings: unknown }[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -219,7 +219,8 @@ export default function AllSubmissions() {
   const handleExportCsv = () => {
     if (!formId) return;
     const form = forms.find((f) => f.id === formId);
-    const columns = resolveColumns(form?.settings?.fields ?? [], filteredSubmissions);
+    // CSV stays flat: one column per field, section titles are not separators.
+    const columns = resolveColumns(normalizeFormSettings(form?.settings), filteredSubmissions);
     const rows = [
       ['Submission ID', 'Submitted at', 'Status', ...columns.map((c) => c.label)],
       ...filteredSubmissions.map((s) => [

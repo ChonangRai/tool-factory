@@ -9,8 +9,8 @@ import { Loader2, CheckCircle2, Receipt, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import TurnstileGate, { type TurnstileGateHandle } from '@/components/TurnstileGate';
 import { verifyHuman, requestUploadTicket, submitForm as submitViaGate, AnonGateError } from '@/lib/anonGate';
-import { DynamicForm } from '@/components/DynamicForm';
-import { FormField } from '@/types/formFields';
+import { SectionedForm } from '@/components/SectionedForm';
+import { normalizeFormSettings, type NormalizedSettings } from '@/lib/formSections';
 import { storage } from '@/lib/storage';
 import { processReceiptImage } from '@/utils/ocr';
 import {
@@ -31,7 +31,7 @@ export default function SubmitReceipt() {
   const [form, setForm] = useState<any>(null);
   const [loadingForm, setLoadingForm] = useState(true);
   const [sendReceipt, setSendReceipt] = useState(false); // Default false for opt-in
-  const [formFields, setFormFields] = useState<FormField[]>([]);
+  const [settings, setSettings] = useState<NormalizedSettings>(() => normalizeFormSettings(null));
   const [validatingImage, setValidatingImage] = useState(false);
   
   // State for low quality warning dialog
@@ -57,12 +57,9 @@ export default function SubmitReceipt() {
       if (!data) throw new Error('Form not found');
       
       setForm(data);
-      
-      // Extract fields from settings
-      const formData = data as any;
-      if (formData.settings && typeof formData.settings === 'object' && 'fields' in formData.settings) {
-        setFormFields((formData.settings as any).fields || []);
-      }
+      // Same normalizer as the builder: forms saved before sections existed
+      // render as one section.
+      setSettings(normalizeFormSettings((data as any).settings));
     } catch (error) {
       console.error('Error loading form:', error);
       toast.error('Form not found or invalid link');
@@ -130,7 +127,7 @@ export default function SubmitReceipt() {
       }
 
       // Handle file uploads
-      const fileFields = formFields.filter(f => f.type === 'file');
+      const fileFields = settings.fields.filter(f => f.type === 'file');
       const uploadedFiles: any[] = [];
 
       for (const field of fileFields) {
@@ -162,12 +159,12 @@ export default function SubmitReceipt() {
       const rpcData: Record<string, any> = { ...formData };
       
       // smart mapping
-      const emailField = formFields.find(f => f.type === 'email');
+      const emailField = settings.fields.find(f => f.type === 'email');
       if (emailField && formData[emailField.id]) {
         rpcData.email = formData[emailField.id];
       }
 
-      const phoneField = formFields.find(f => f.type === 'phone');
+      const phoneField = settings.fields.find(f => f.type === 'phone');
       if (phoneField && formData[phoneField.id]) {
         rpcData.contact_number = formData[phoneField.id];
       }
@@ -175,12 +172,12 @@ export default function SubmitReceipt() {
       // Try to find reasonable defaults for name/description if not explicit
       // (This helps populate the summary columns in the dashboard)
       if (!rpcData.name) {
-        const nameField = formFields.find(f => f.type === 'text' && f.label.toLowerCase().includes('name'));
+        const nameField = settings.fields.find(f => f.type === 'text' && f.label.toLowerCase().includes('name'));
         if (nameField) rpcData.name = formData[nameField.id];
       }
 
       if (!rpcData.description) {
-         const descField = formFields.find(f => f.type === 'textarea');
+         const descField = settings.fields.find(f => f.type === 'textarea');
          if (descField) rpcData.description = formData[descField.id];
       }
 
@@ -217,9 +214,10 @@ export default function SubmitReceipt() {
     }
   };
 
-  const handleSubmit = async (formData: Record<string, any>) => {
+  const handleSubmit = async (submitted: Record<string, unknown>) => {
+    const formData = submitted as Record<string, any>;
     // Check for files and validate quality
-    const fileFields = formFields.filter(f => f.type === 'file');
+    const fileFields = settings.fields.filter(f => f.type === 'file');
     let qualityIssue = false;
 
     for (const field of fileFields) {
@@ -318,8 +316,8 @@ export default function SubmitReceipt() {
         )}
 
         <div className="space-y-6">
-          <DynamicForm
-            fields={formFields}
+          <SectionedForm
+            settings={settings}
             onSubmit={handleSubmit}
             isSubmitting={loading || validatingImage || !humanVerified}
           >
@@ -341,7 +339,7 @@ export default function SubmitReceipt() {
                 attachments. Solving it once authorises this submission and
                 any upload tickets it needs. */}
             <TurnstileGate ref={turnstile} onSolved={setHumanVerified} />
-          </DynamicForm>
+          </SectionedForm>
         </div>
 
         <AlertDialog open={showQualityWarning} onOpenChange={setShowQualityWarning}>

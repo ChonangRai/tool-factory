@@ -7,6 +7,7 @@ export interface ReceiptField {
   label?: string;
   type?: string;
   order?: number;
+  sectionTitle?: string;
 }
 
 export interface ReceiptSubmission {
@@ -71,17 +72,25 @@ export function buildReceiptEmail(submission: ReceiptSubmission): { subject: str
   const files = submission.files ?? [];
   const fieldIds = new Set(fields.map((f) => f.id));
 
-  const rows: { label: string; value: string }[] = [];
+  // Rows carry the section they were submitted under (snapshotted by 040), so
+  // a later rename or move cannot change what an old receipt meant.
+  const rows: { label: string; value: string; section: string }[] = [];
   for (const field of fields) {
     const value =
       field.type === 'file'
         ? files.filter((f) => f.field_id === field.id).map((f) => f.filename).join(', ')
         : formatValue(field.type, data[field.id]);
-    if (value.trim()) rows.push({ label: field.label?.trim() || 'Untitled field', value });
+    if (value.trim()) {
+      rows.push({
+        label: field.label?.trim() || 'Untitled field',
+        value,
+        section: (field.sectionTitle ?? '').trim(),
+      });
+    }
   }
 
   const loose = files.filter((f) => !f.field_id || !fieldIds.has(f.field_id)).map((f) => f.filename);
-  if (loose.length) rows.push({ label: 'Attachments', value: loose.join(', ') });
+  if (loose.length) rows.push({ label: 'Attachments', value: loose.join(', '), section: '' });
 
   if (!snapshot) {
     const legacy: [string, unknown][] = [
@@ -91,20 +100,27 @@ export function buildReceiptEmail(submission: ReceiptSubmission): { subject: str
       ['Description', submission.description],
     ];
     for (const [label, value] of legacy) {
-      if (value) rows.unshift({ label, value: String(value) });
+      if (value) rows.unshift({ label, value: String(value), section: '' });
     }
   }
 
   const submittedAt = formatDate(submission.created_at);
 
   const rowsHtml = rows
-    .map(
-      (r) => `
+    .map((r, i) => {
+      const heading =
+        r.section && r.section !== (rows[i - 1]?.section ?? '')
+          ? `
+        <tr>
+          <td colspan="2" style="padding:16px 0 4px;color:#555;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.04em;">${escapeHtml(r.section)}</td>
+        </tr>`
+          : '';
+      return `${heading}
         <tr>
           <td style="padding:8px 12px 8px 0;vertical-align:top;color:#555;font-weight:600;white-space:nowrap;">${escapeHtml(r.label)}</td>
           <td style="padding:8px 0;vertical-align:top;color:#111;">${escapeMultiline(r.value)}</td>
-        </tr>`
-    )
+        </tr>`;
+    })
     .join('');
 
   const html = `<!doctype html>
@@ -127,7 +143,10 @@ export function buildReceiptEmail(submission: ReceiptSubmission): { subject: str
     `${formName}`,
     `Submission received${submittedAt ? ` - ${submittedAt}` : ''}`,
     '',
-    ...rows.map((r) => `${r.label}:\n${r.value}\n`),
+    ...rows.map((r, i) => {
+      const heading = r.section && r.section !== (rows[i - 1]?.section ?? '') ? `[${r.section}]\n` : '';
+      return `${heading}${r.label}:\n${r.value}\n`;
+    }),
     `Reference: ${submission.id}`,
   ].join('\n');
 
