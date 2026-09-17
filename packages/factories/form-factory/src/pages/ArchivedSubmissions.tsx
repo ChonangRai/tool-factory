@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { purgeSubmission } from '@/lib/submissionPurge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -172,49 +173,13 @@ export default function ArchivedSubmissions() {
 
   const handlePermanentDeleteSubmission = async (submissionId: string) => {
     try {
-      // 1. Get all files associated with this submission
-      const { data: files, error: filesError } = await supabase
-        .from('files')
-        .select('path')
-        .eq('submission_id', submissionId);
-
-      if (filesError) throw filesError;
-
-      // 2. Delete files from storage
-      if (files && files.length > 0) {
-        const filePaths = files.map(f => f.path);
-        const { error: storageError } = await supabase.storage
-          .from('form-submissions')
-          .remove(filePaths);
-
-        if (storageError) {
-          console.error('Error deleting files from storage:', storageError);
-          // Continue anyway - we still want to delete the database records
-        }
-      }
-
-      // 3. Delete file records from database
-      const { error: deleteFilesError } = await supabase
-        .from('files')
-        .delete()
-        .eq('submission_id', submissionId);
-
-      if (deleteFilesError) throw deleteFilesError;
-
-      // 4. Now delete the submission
-      const { error: deleteError } = await supabase
-        .from('submissions')
-        .delete()
-        .eq('id', submissionId);
-
-      if (deleteError) throw deleteError;
-
-      toast.success('Submission permanently deleted');
+      const result = await purgeSubmission(submissionId);
+      toast.success(result === 'deleted' ? 'Submission permanently deleted' : 'Submission was already deleted');
       setItemToDelete(null);
       loadArchivedSubmissions();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error permanently deleting submission:', error);
-      toast.error('Failed to permanently delete submission: ' + error.message);
+      toast.error('Failed to permanently delete submission: ' + (error instanceof Error ? error.message : String(error)));
     }
   };
 
