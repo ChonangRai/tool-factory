@@ -319,7 +319,8 @@ export default function SubmitReceipt() {
           <SectionedForm
             settings={settings}
             onSubmit={handleSubmit}
-            isSubmitting={loading || validatingImage || !humanVerified}
+            isSubmitting={loading || validatingImage}
+            submitDisabled={!humanVerified}
           >
             <div className="flex items-center space-x-2 p-2">
               <Checkbox 

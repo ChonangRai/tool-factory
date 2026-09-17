@@ -50,7 +50,10 @@ function normalizeSection(raw: unknown, index: number): FormSection | null {
   return {
     id,
     title: text(raw.title).trim(),
-    ...(description ? { description } : {}),
+    // The key is kept whenever it exists, empty included: that is how the
+    // builder shows an empty description box once "Add description" is used.
+    // toStoredSettings drops it again when it is still empty at save time.
+    ...(raw.description !== undefined ? { description } : {}),
     order: typeof raw.order === 'number' && Number.isFinite(raw.order) ? raw.order : index,
   };
 }

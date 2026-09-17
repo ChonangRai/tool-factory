@@ -16,7 +16,14 @@ import { formatAnswer } from '@/lib/submissionAnswers';
 interface SectionedFormProps {
   settings: NormalizedSettings;
   onSubmit: (values: Record<string, unknown>) => void;
+  /** Busy state: blocks navigation and submission while work is in flight. */
   isSubmitting?: boolean;
+  /**
+   * Blocks only the final submit (e.g. the human check, which lives beside
+   * the submit button on the last step). Navigation must stay usable, or a
+   * multi-step form could never reach the step that carries the check.
+   */
+  submitDisabled?: boolean;
   /** Rendered on the last step, above the submit button (receipt opt-in, Turnstile). */
   children?: React.ReactNode;
   submitLabel?: string;
@@ -30,6 +37,7 @@ export function SectionedForm({
   settings,
   onSubmit,
   isSubmitting = false,
+  submitDisabled = false,
   children,
   submitLabel = 'Submit form',
 }: SectionedFormProps) {
@@ -214,7 +222,7 @@ export function SectionedForm({
           <span className="hidden sm:block" />
         )}
         {isLastStep ? (
-          <Button type="submit" disabled={isSubmitting} className="sm:w-auto">
+          <Button type="submit" disabled={isSubmitting || submitDisabled} className="sm:w-auto">
             {isSubmitting ? 'Submitting...' : submitLabel}
           </Button>
         ) : (
